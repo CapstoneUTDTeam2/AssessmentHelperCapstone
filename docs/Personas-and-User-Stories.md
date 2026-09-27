@@ -127,7 +127,7 @@
 
 - As an assessment committee member, I want to view observer matching and participation metrics so that I can identify problems with participation or the observer recommendation process.
 
-- As an assessment committee member, I want to view outstanding observations and unmatched faculty members so that I can identify parts of the current evaluation cycle that still need attention.
+- As an assessment committee member, I want to view outstanding observations and unmatched faculty members so that I can identify parts of the current eval cycle that still need attention.
 
 - As an assessment committee member, I want to maintain and update the evaluation criteria and ratings so that faculty members are evaluated using the current standards.
 
