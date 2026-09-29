@@ -55,6 +55,59 @@ CREATE TABLE Sections (
     foreign key (CourseID) references Courses(CourseID)
 );
 
+CREATE TABLE EvaluationCycle (
+    CycleID INT PRIMARY KEY,
+    TermID INT NOT NULL,
+    SignUpDeadLine DATE,
+    ObservationDeadLine DATE,
+    FeedbackDeadLine DATE,
+    foreign key (TermID) references AcademicTerm(TermID)
+);
+
+CREATE TABLE ObservationTemplate(
+    TemplateID INT PRIMARY KEY,
+    TemplateVersion VARCHAR(100),
+    TemplateContent TEXT,
+    LastUpdateDate DATE,
+    LastUpdateTime TIME,
+    isActive BOOLEAN
+);
+
+CREATE TABLE ObservationSignup (
+    SignupID INT PRIMARY KEY,
+    CycleID INT,
+    ObserveeProfessorID INT,
+    SectionID INT,
+    PreferredTimes TEXT,
+    SignupDate DATE,
+    SignupTime TIME,
+    Status VARCHAR(20),
+    foreign key (CycleID) references  EvaluationCycle(CycleID),
+    foreign key (ObserveeProfessorID) references Professors(ProfessorID),
+    foreign key (SectionID) references Sections(SectionID)
+);
+
+CREATE TABLE ObserverRequest(
+    RequestID INT PRIMARY KEY,
+    SignupID INT,
+    ObserverProfessorID INT,
+    RequestDate DATE,
+    RequestTime TIME,
+    ExpirationDate DATE,
+    ExpirationTime TIME,
+    Status VARCHAR(20),
+    foreign key (SignupID) references ObserverRequest(SignupID),
+    foreign key (ObserverProfessorID) references Professors(ProfessorID)
+);
+
+CREATE TABLE TeachingAssignment (
+    SectionID INT,
+    ProfessorID INT,
+    PRIMARY KEY (SectionID, ProfessorID),
+    foreign key (SectionID) references Sections(SectionID),
+    foreign key (ProfessorID) references Professors(ProfessorID)
+);
+
 CREATE TABLE Observation (
     ObservationID INT PRIMARY KEY,
     SignupID INT,
@@ -72,65 +125,10 @@ CREATE TABLE Observation (
     ObserveeID INT NOT NULL,
     ObservationTime TIME,
     foreign key (ObserverProfessorID) references Professors(ProfessorID),
-    foreign key (SignupID) references ObserverRequest(SignupID),
+    foreign key (SignupID) references ObservationSignup(SignupID),
     foreign key (ObserveeID) references Professors(ProfessorID),
     foreign key (TemplateID) references ObservationTemplate(TemplateID)
 );
-
-CREATE TABLE TeachingAssignment (
-    SectionID INT,
-    ProfessorID INT,
-    PRIMARY KEY (SectionID, ProfessorID),
-    foreign key (SectionID) references Sections(SectionID),
-    foreign key (ProfessorID) references Professors(ProfessorID)
-);
-
-CREATE TABLE EvaluationCycle (
-    CycleID INT PRIMARY KEY,
-    --To be worked on (connections included)
-    TermID INT NOT NULL,
-    SignUpDeadLine DATE,
-    ObservationDeadLine DATE,
-    FeedbackDeadLine DATE,
-    foreign key (TermID) references AcademicTerm(TermID)
-);
-
-CREATE TABLE ObservationTemplate(
-    TemplateID INT PRIMARY KEY,
-    TemplateVersion VARCHAR(100),
-    TemplateContent TEXT,
-    LastUpdateDate DATE,
-    LastUpdateTime TIME,
-    isActive BOOLEAN
-);
-
-CREATE TABLE ObserverRequest(
-    RequestID INT PRIMARY KEY,
-    SignupID INT,
-    ObserverProfessorID INT,
-    RequestDate DATE,
-    RequestTime TIME,
-    ExpirationDate DATE,
-    ExpirationTime TIME,
-    Status VARCHAR(20),
-    foreign key (ObserverProfessorID) references Professors(ProfessorID)
-);
-
-CREATE TABLE ObservationSignup (
-    SignupID INT PRIMARY KEY,
-    CycleID INT,
-    ObserveeProfessorID INT,
-    SectionID INT,
-    PreferredTimes TEXT,
-    SignupDate DATE,
-    SignupTime TIME,
-    Status VARCHAR(20),
-    foreign key (SignupID) references ObserverRequest(SignupID),
-    foreign key (CycleID) references  EvaluationCycle(CycleID),
-    foreign key (ObserveeProfessorID) references Professors(ProfessorID),
-    foreign key (SectionID) references Sections(SectionID)
-);
---CourseID?
 
 CREATE TABLE SurveyResponse (
     SurveyResponseID INT PRIMARY KEY,
