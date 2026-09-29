@@ -48,24 +48,33 @@
 
 ### 3.2 Software Interfaces
 
-**Nadhif Mahmood**
-
 `POST /api/match-observers`
 
-Request: faculty_id, course_id
-Response: list of up to 5 observers, each with observer_id, name, and school
+Request: faculty_id, course_id, requested_day, requested_time
+Response: list of up to 5 observers, each with observer_id, name, and department
+
 
 ### 3.3 Communication Interfaces
+
+- Sign-up form: web form with Single Sign-On
+- Observation confirmation: submitted by the observee through a web form with Single Sign-On
+- Observation form: docx file, filled out by the observer during the observation
+- Process feedback form: web form with Single Sign-On
+
 
 ## 4. System Features
 
 ### 4.1 User and Role Management
 
+- Three user personas: Faculty, Assessment Committee members, and Department Heads
+- Students don’t have access to the system
+- Faculty can look at their own profile, evaluation status, and observation history
+- Assessment Committee members can look at faculty due and overdue for evaluation, manage observer matching, send reminder notifications, and modify the observation template, criteria, and ratings
+- Department Heads can request access to a specific observation but do not have automatic visibility
+
 ### 4.2 Data Management
 
 ### 4.3 Workflow and Scheduling
-
-**Nadhif Mahmood**
 
 - Assistant professors are evaluated every year, once in Spring and once in Fall
 - Associate and full professors are evaluated every 2 years
@@ -78,16 +87,15 @@ Response: list of up to 5 observers, each with observer_id, name, and school
 - Observer completes the observation form during the session
 - Observee confirms the observation occurred through the system
 
+
 ### 4.4 Matching and Recommendations
 
-**Nadhif Mahmood**
-
 - Courses are categorized by level using the most significant digit (1000, 2000, 3000, 4000)
-- An eligible observer must be in the same school as the observee, not just the same department
-- The observer must have taught a course at that level within the past 2 years
+- An eligible observer must be in the same department as the observee and teach at that same course level
+- An eligible observer must be free during the requested observation day and time
 - The observee is excluded from their own match list
-- The system returns up to 5 matching observers
-- If more than 5 qualify, 5 are selected at random
+- The system returns up to 5 matching observers; if more than 5 qualify, 5 are selected at random
+- If no eligible observer can be found, the Assessment Committee dashboard shows an alert immediately
 
 
 ### 4.5 Dashboard and Reporting

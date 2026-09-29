@@ -14,7 +14,7 @@
 
 ### Observer
 
-**Goals**
+**Goals:**
 
 -   Get put in a pool of other observed faculty members based on course level and department
 -   Be notified when a faculty member wants me to observe their class
@@ -23,6 +23,28 @@
 -   Review and download the evaluation document
 -   Upload the signed evaluation document during after the observation
 -   Reflect on the assessment helper process
+
+
+### Assessment Committee Member
+
+
+**Goals:**
+
+- Easily Identify professors whoa are due or overdue for eval
+- Clearly communicate important deadlines to participating members
+- Ensure each observee receives a sufficient list of eligible observers
+- Manage exceptions or problems that cannot be handled automatically
+- Quickly identify observees who have no or insufficient matches
+- Review KPIs and metrics on dashboard
+- Maintain and update the evaluation metrics, criteria, template, etc.
+
+### Department Head
+
+**Goals:**
+
+- Request access to a specific observation when needed
+- Oversee evaluation and observation activity within their department
+  
 
 ## 2. User Stories
 
@@ -77,4 +99,49 @@
 
 - As a faculty observer, I wan tto upload the signed evaluation document after completing the observation so that the evaluation can be recorded and submitted
 
-- As a faculty observer, I want to provide feedback about my experience with the assessment helper process so that the system can be improved for future faculty members. 
+- As a faculty observer, I want to provide feedback about my experience with the assessment helper process so that the system can be improved for future faculty members.
+
+
+### Assessment Committee Member
+
+- As an assessment committee member, I want to see a list of all professors who are due or overdue for evaluation so that I can ensure that the appropriate faculty participate in the current eval cycle
+  
+- As an assessment committee member, I wan tto notify pprofessors who are due or overdue for evaluation so that they are aware that they need to participate in the current evaluation cycle
+  
+- As an assessment committee member, I want to clearly communicate the signup deadline to participating faculty members so that they know when they need to sign up for the evaluation cycle.
+  
+- As an assessment committee member, I want to clearly communicate the observation period deadline so that faculty members and observers know when their observations must be completed.
+
+- As an assessment committee member, I want to clearly communicate the feedback and survey deadline so that participating faculty members know when they need to complete their feedback.
+  
+- As an assessment committee member, I want to see all faculty signup requests so that I can monitor which faculty members are participating in the current evaluation cycle.
+
+- As an assessment committee member, I want to ensure that each observee receives a sufficient list of eligible observers so that they have enough options when selecting someone to complete their observation.
+
+- As an assessment committee member, I want to see the list of eligible observers generated for each observee so that I can ensure that the observer selection process is working correctly.
+
+- As an assessment committee member, I want to be alerted when an observee has no or insufficient eligible observer matches so that I can quickly identify problems with the observer selection process.
+
+- As an assessment committee member, I want to manually assist with observer selection when the system cannot find enough eligible observers so that the observee can still complete their evaluation.
+
+- As an assessment committee member, I want to manage exceptions or problems that cannot be handled automatically so that they do not prevent faculty members from completing the evaluation process.
+
+- As an assessment committee member, I want to notify observees when their list of potential observers is ready so that they can begin the observer selection process.
+
+- As an assessment committee member, I want to view KPIs and metrics on the dashboard so that I can evaluate how well the faculty evaluation process is performing.
+
+- As an assessment committee member, I want to view the number of faculty members who are overdue for evaluation so that I can identify faculty members who have not completed their required evaluations.
+
+- As an assessment committee member, I want to view observer matching and participation metrics so that I can identify problems with participation or the observer recommendation process.
+
+- As an assessment committee member, I want to view outstanding observations and unmatched faculty members so that I can identify parts of the current eval cycle that still need attention.
+
+- As an assessment committee member, I want to maintain and update the evaluation criteria and ratings so that faculty members are evaluated using the current standards.
+
+- As an assessment committee member, I want to maintain and update the evaluation template so that observers use the correct document when completing an evaluation.
+  
+### Department Head
+
+- As a department head, I want to request access to a specific observation so I can review it when there is a concern about my specific department.
+
+- As a department head, I want observation records to stay private by default so faculty privacy is respected unless there's a real reason to look.
