@@ -55,14 +55,26 @@ CREATE TABLE Sections (
     foreign key (CourseID) references Courses(CourseID)
 );
 
-CREATE TABLE Observations (
+CREATE TABLE Observation (
     ObservationID INT PRIMARY KEY,
+    SignupID INT,
     ObservationDate DATE,
-    ObserverID INT NOT NULL,
+    ObserverProfessorID INT NOT NULL,
+    TemplateID INT,
+    ScheduledDate DATE,
+    ScheduledTime TIME,
+    CompletedDate DATE,
+    CompletedTime TIME,
+    Status VARCHAR(20),
+    Signee VARCHAR(255),
+    Observer VARCHAR(255),
+    Notes Text,
     ObserveeID INT NOT NULL,
     ObservationTime TIME,
-    foreign key (ObserverID) references Professors(ProfessorID),
-    foreign key (ObserveeID) references Professors(ProfessorID)
+    foreign key (ObserverProfessorID) references Professors(ProfessorID),
+    foreign key (SignupID) references ObserverRequest(SignupID),
+    foreign key (ObserveeID) references Professors(ProfessorID),
+    foreign key (TemplateID) references ObservationTemplate(TemplateID)
 );
 
 CREATE TABLE TeachingAssignment (
@@ -83,30 +95,55 @@ CREATE TABLE EvaluationCycle (
     foreign key (TermID) references AcademicTerm(TermID)
 );
 
--- ObservationSignup
-    -- SignupID
-    -- CycleID
-    -- ObserveeID
-    -- SectionID
+CREATE TABLE ObservationTemplate(
+    TemplateID INT PRIMARY KEY,
+    TemplateVersion VARCHAR(100),
+    TemplateContent TEXT,
+    LastUpdateDate DATE,
+    LastUpdateTime TIME,
+    isActive BOOLEAN
+);
 
---ObserverRequest
-    --RequestID
-    --SignupID
-    --ObserverID
-    --RequestDateTime
-    --ExpirationDateTime
-    --Status
-      --Pending
-      --Accepted
-      --Declined
-      --Expired
-      --Cancelled
--- ObservationTemplate
-    -- Editable by Assessment Committee
+CREATE TABLE ObserverRequest(
+    RequestID INT PRIMARY KEY,
+    SignupID INT,
+    ObserverProfessorID INT,
+    RequestDate DATE,
+    RequestTime TIME,
+    ExpirationDate DATE,
+    ExpirationTime TIME,
+    Status VARCHAR(20),
+    foreign key (ObserverProfessorID) references Professors(ProfessorID)
+);
 
--- ObservationTemplateVersion
-    -- Preserve the version used for an observation
-    -- Once an observation is signed, it cannot be edited
+CREATE TABLE ObservationSignup (
+    SignupID INT PRIMARY KEY,
+    CycleID INT,
+    ObserveeProfessorID INT,
+    SectionID INT,
+    PreferredTimes TEXT,
+    SignupDate DATE,
+    SignupTime TIME,
+    Status VARCHAR(20),
+    foreign key (SignupID) references ObserverRequest(SignupID),
+    foreign key (CycleID) references  EvaluationCycle(CycleID),
+    foreign key (ObserveeProfessorID) references Professors(ProfessorID),
+    foreign key (SectionID) references Sections(SectionID)
+);
+--CourseID?
 
--- Completed Observation
-    -- Cannot be edited
+CREATE TABLE SurveyResponse (
+    SurveyResponseID INT PRIMARY KEY,
+    CycleID INT,
+    ProfessorID INT,
+    SignupID INT,
+    Role VARCHAR(20),
+    SubmissionDate DATE,
+    SubmissionTime TIME,
+    ProcessStatus VARCHAR(50),
+    Difficulties TEXT,
+    ImprovementConditions TEXT,
+    foreign key (CycleID) references EvaluationCycle(CycleID),
+    foreign key (ProfessorID) references Professors(ProfessorID),
+    foreign key (SignupID) references ObserverRequest(SignupID)
+);
