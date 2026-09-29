@@ -1,10 +1,11 @@
 import os
 import requests
+import pandas
 from dotenv import load_dotenv
 
 load_dotenv()
 API_KEY = os.getenv("NEBULALABS_API_KEY")
-data={"first_name": "John", "last_name": "Cole"}
+data={"first_name": "Jean", "last_name": "ValJean"}
 
 r = requests.get(
     "https://api.utdnebula.com/professor",
@@ -12,5 +13,9 @@ r = requests.get(
     params=data
     )
 
-print(r.json())
+result = r.json()
 
+prof = result["data"][0]
+
+print(prof["first_name"], prof["last_name"], prof["email"], prof["_id"])
+print(prof)
