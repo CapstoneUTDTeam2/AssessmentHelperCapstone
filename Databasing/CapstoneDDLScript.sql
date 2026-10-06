@@ -96,7 +96,7 @@ CREATE TABLE ObserverRequest(
     ExpirationDate DATE,
     ExpirationTime TIME,
     Status VARCHAR(20),
-    foreign key (SignupID) references ObserverRequest(SignupID),
+    foreign key (SignupID) references ObservationSignup(SignupID),
     foreign key (ObserverProfessorID) references Professors(ProfessorID)
 );
 
@@ -144,7 +144,7 @@ CREATE TABLE SurveyResponse (
     ImprovementConditions TEXT,
     foreign key (CycleID) references EvaluationCycle(CycleID),
     foreign key (ProfessorID) references Professors(ProfessorID),
-    foreign key (SignupID) references ObserverRequest(SignupID)
+    foreign key (SignupID) references ObservationSignup(SignupID)
 );
 
 --Specifically for observee explaining their case
