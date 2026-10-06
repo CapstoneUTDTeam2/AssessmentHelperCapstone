@@ -22,12 +22,20 @@
 ## 2. Overall Description
 
 ### 2.1 Product Perspective
+**External View:**
+
+The assessment helper aims to provide a more seamless evaluation experience for university professors by providing a web app for professors to use. For each eval cycle, this tools allows the observed, observee, and assessment committee(AC) to coordinate for the goal of reviewing, affirming, and/or improving the current teaching atmosphere. 
+
+The current systems aims not to replace the AC members duties, but provide an easier experience through customizable observer matching, eval cycle tracking, and analytics review. The three primary user groups this platform aims to support are the faculty member being observed, the faculty member that is observing them, and the AC members
 
 ### 2.2 Product Functions
 
 ### 2.3 User Classes and Characteristics
 
 ### 2.4 Operating Environment
+
+The operating environment for this platform is web based using a client-server architecture. The platform will be available most devices with internet connections. Users will interact with the React-based frontend. All authentication and any secure operations will be communicated to and completed in the backend using FastAPI and Python. When the backend needs data, it will communicate to the database using PostgresSQL.
+
 
 ### 2.5 Constraints
 
