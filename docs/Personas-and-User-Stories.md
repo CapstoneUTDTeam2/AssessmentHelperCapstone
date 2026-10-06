@@ -38,13 +38,6 @@
 - Review KPIs and metrics on dashboard
 - Maintain and update the evaluation metrics, criteria, template, etc.
 
-### Department Head
-
-**Goals:**
-
-- Request access to a specific observation when needed
-- Oversee evaluation and observation activity within their department
-  
 
 ## 2. User Stories
 
@@ -140,8 +133,3 @@
 
 - As an assessment committee member, I want to maintain and update the evaluation template so that observers use the correct document when completing an evaluation.
   
-### Department Head
-
-- As a department head, I want to request access to a specific observation so I can review it when there is a concern about my specific department.
-
-- As a department head, I want observation records to stay private by default so faculty privacy is respected unless there's a real reason to look.
