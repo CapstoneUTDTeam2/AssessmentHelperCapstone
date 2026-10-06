@@ -74,11 +74,10 @@ Response: list of up to 5 observers, each with observer_id, name, and department
 
 ### 4.1 User and Role Management
 
-- Three user personas: Faculty, Assessment Committee members, and Department Heads
+- Two user personas: Faculty and Assessment Committee members
 - Students don’t have access to the system
 - Faculty can look at their own profile, evaluation status, and observation history
 - Assessment Committee members can look at faculty due and overdue for evaluation, manage observer matching, send reminder notifications, and modify the observation template, criteria, and ratings
-- Department Heads can request access to a specific observation but do not have automatic visibility
 
 ### 4.2 Data Management
 
@@ -95,7 +94,6 @@ Response: list of up to 5 observers, each with observer_id, name, and department
 - Records store when they were created and last updated
 - Changes to templates, criteria, and faculty profiles record which AC member made them
 - Faculty profile data is managed by the AC and cannot be edited by faculty
-- Department Head access requests are logged
 - Course and professor data is pulled from the Nebula Labs API at the start of each semester
 - Professor names are anonymized when data is pulled in
 - Pre-observation notes and student accommodation info are not stored
@@ -150,7 +148,7 @@ Response: list of up to 5 observers, each with observer_id, name, and department
 
 ### 5.2 Security and Privacy
 - Authenticate faculty members before accessing data
-- Only the evaluated member and the observer can see the assessments besides a department head with priviledge
+- Only the evaluated member, the observer, and Assessment Committee members can see the assessments
 - Keep names and identities fake
   
   
