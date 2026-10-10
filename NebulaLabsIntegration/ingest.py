@@ -43,6 +43,80 @@ def pseudonym(source_id: str, key: str) -> str:
     token = hmac.new(key.encode(), source_id.encode(), hashlib.sha256).hexdigest()[:12]
     return f"Professor {token}"
 
+THEATRE_NAMES = [
+    # Les Misérables
+    "Jean Valjean", "Javert", "Fantine", "Cosette", "Marius Pontmercy",
+    "Eponine Thenardier", "Enjolras", "Grantaire", "Gavroche",
+    "Monsieur Thenardier", "Madame Thenardier", "Bishop Myriel",
+    "Felix Tholomyes", "Jean Prouvaire", "Combeferre", "Courfeyrac",
+    "Feuilly", "Bahorel", "Bossuet", "Joly", "Azelma Thenardier",
+    "Gillenormand", "Mabeuf", "Montparnasse", "Babet", "Claquesous",
+    "Brujon", "Fauchelevent", "Champmathieu", "Sister Simplice",
+    "Sister Perpetue", "Brevet", "Chenildieu", "Cochepaille",
+    "Toussaint", "Madame Magloire",
+
+    # Hadestown
+    "Orpheus", "Eurydice", "Hermes", "Persephone",
+    "Hades", "Fate One", "Fate Two", "Fate Three",
+
+    # Chicago
+    "Roxie Hart", "Velma Kelly", "Billy Flynn", "Amos Hart",
+    "Matron Morton", "Mary Sunshine", "Fred Casely", "Harrison",
+    "Liz", "Annie", "June", "Hunyak",
+
+    # Little Shop of Horrors
+    "Seymour Krelborn", "Audrey", "Audrey Two", "Mr Mushnik",
+    "Orin Scrivello", "Crystal", "Ronnette", "Chiffon",
+    "Patrick Martin", "Bernstein",
+
+    # Hamilton
+    "Alexander Hamilton", "Aaron Burr", "Eliza Schuyler",
+    "Angelica Schuyler", "Peggy Schuyler", "George Washington",
+    "Thomas Jefferson", "James Madison", "John Laurens",
+    "Hercules Mulligan", "Philip Hamilton", "Maria Reynolds",
+    "James Reynolds", "Samuel Seabury", "Charles Lee",
+    "King George III", "George Eacker", "Philip Schuyler",
+
+    # The Phantom of the Opera
+    "Erik", "Christine Daae", "Raoul de Chagny",
+    "Carlotta Giudicelli", "Madame Giry", "Meg Giry",
+    "Ubaldo Piangi", "Richard Firmin", "Gilles Andre",
+    "Joseph Buquet", "Monsieur Reyer", "Madame Valerius",
+
+    # The Book of Mormon
+    "Kevin Price", "Arnold Cunningham", "Nabulungi",
+    "Elder McKinley", "Elder Thomas", "Elder Davis",
+    "Elder Church", "Elder Grant", "Elder Michaels",
+    "Mission President",
+
+    # South Park: Bigger, Longer & Uncut
+    "Stan Marsh", "Kyle Broflovski", "Eric Cartman",
+    "Kenny McCormick", "Wendy Testaburger", "Chef",
+    "Mr Garrison", "Mr Mackey", "Sheila Broflovski",
+    "Gerald Broflovski", "Sharon Marsh", "Randy Marsh",
+    "Liane Cartman", "Ike Broflovski", "Terrance",
+    "Phillip", "Butters Stotch", "Craig Tucker",
+    "Clyde Donovan", "Gregory",
+]
+def fictional_professor_name(source_id: str, key: str, used_names: set) -> str:
+    """Generate a fictional name, resolving collisions by moving forward."""
+
+    digest = hmac.new(
+        key.encode(),
+        source_id.encode(),
+        hashlib.sha256
+    ).digest()
+
+    index = int.from_bytes(digest[:8], "big") % len(THEATRE_NAMES)
+
+    for offset in range(len(THEATRE_NAMES)):
+        name = THEATRE_NAMES[(index + offset) % len(THEATRE_NAMES)]
+
+        if name not in used_names:
+            used_names.add(name)
+            return name
+
+    raise IngestionError("All fictional professor names have been assigned")
 
 def parse_term(value: str) -> tuple[str, int, str]:
     """Parse Nebula term names such as 25F, Fall 2025, or 2025 Fall."""
@@ -216,6 +290,18 @@ def collect(client: NebulaClient, prefix: str, requested_term: str, anon_key: st
 
     if not result.sections:
         raise IngestionError(f"No {prefix} sections found for term {requested_term}")
+
+    used_names = set()
+    for pid in sorted(result.professors):
+        _, department_id = result.professors[pid]
+
+        name = fictional_professor_name(
+            str(pid),
+            anon_key,
+            used_names
+        )
+
+        result.professors[pid] = (name, department_id)
     return result
 
 
