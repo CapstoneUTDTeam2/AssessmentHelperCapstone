@@ -68,7 +68,7 @@ Values
 
 INSERT INTO ObservationTemplate(TemplateID, TemplateVersion, TemplateContent, LastUpdateDate, LastUpdateTime, isActive)
 Values
-(1, '1.0', 'Standard classroom observation template.', '2026-01-10', '09:00:00', FALSE)
+(1, '1.0', 'Standard classroom observation template.', '2026-01-10', '09:00:00', FALSE),
 (2, '2.0', 'Updated classroom observation template with revised teaching criteria.', '2026-08-15', '10:30:00', TRUE);
 
 INSERT INTO ObservationSignup(SignupID, CycleID, ObserveeProfessorID, SectionID, PreferredTimes, SignupDate, 
@@ -107,7 +107,7 @@ Values
 INSERT INTO SurveyResponse(SurveyResponseID, CycleID, ProfessorID, SignupID, Role, SubmissionDate, SubmissionTime,
     ProcessStatus, Difficulties, ImprovementConditions)
 Values
-(1, 2, 1, 1, 'Observee', '2026-10-16', '12:00:00', 'Processed', 'No major difficulties.', 'Additional classroom technology support would be helpful.')
-(2, 2, 2, 2, 'Observee', '2026-10-21', '13:30:00', 'Processed', 'Projector connection was unreliable.', 'Improved classroom technology would be beneficial.')
-(3, 2, 3, 3, 'Observer', '2026-10-27', '14:00:00', 'Pending', 'No difficulties reported.', 'Additional time for observation feedback would be useful.')
+(1, 2, 1, 1, 'Observee', '2026-10-16', '12:00:00', 'Processed', 'No major difficulties.', 'Additional classroom technology support would be helpful.'),
+(2, 2, 2, 2, 'Observee', '2026-10-21', '13:30:00', 'Processed', 'Projector connection was unreliable.', 'Improved classroom technology would be beneficial.'),
+(3, 2, 3, 3, 'Observer', '2026-10-27', '14:00:00', 'Pending', 'No difficulties reported.', 'Additional time for observation feedback would be useful.'),
 (4, 2, 4, 4, 'Observer', '2026-11-04', '16:00:00', 'Pending', 'No difficulties reported.', 'None reported.');
