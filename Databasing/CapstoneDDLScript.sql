@@ -131,7 +131,7 @@ CREATE TABLE Observation (
 );
 
 --Post observation survey for database/technology
-CREATE TABLE SurveyResponse (
+CREATE TABLE PostObservationSurveyResponse (
     SurveyResponseID INT PRIMARY KEY,
     CycleID INT,
     ProfessorID INT,
@@ -145,6 +145,20 @@ CREATE TABLE SurveyResponse (
     foreign key (CycleID) references EvaluationCycle(CycleID),
     foreign key (ProfessorID) references Professors(ProfessorID),
     foreign key (SignupID) references ObservationSignup(SignupID)
+);
+
+CREATE TABLE AppSurveyResponse (
+    AppResponseID INT PRIMARY KEY,
+    ObservationID INT NOT NULL,
+    Role VARCHAR(20) NOT NULL
+        CHECK (Role IN ('Observer', 'Observee')),
+    AppImprovements TEXT,
+    AppEnjoyments TEXT,
+
+    FOREIGN KEY (ObservationID)
+        REFERENCES Observation(ObservationID),
+
+    UNIQUE (ObservationID, Role)
 );
 
 --Specifically for observee explaining their case

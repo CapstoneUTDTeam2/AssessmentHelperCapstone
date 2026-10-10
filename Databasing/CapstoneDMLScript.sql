@@ -104,7 +104,7 @@ Values
 (3, 3, '2026-10-26', 1, 2, '2026-10-26', '13:00:00', NULL, NULL, 'Scheduled', 'Carol Williams', 'Alice Johnson', 'Observation scheduled for the fall evaluation cycle.', 3, '13:00:00'),
 (4, 4, '2026-11-03', 2, 2, '2026-11-03', '15:00:00', NULL, NULL, 'Scheduled', 'David Brown', 'Robert Smith', 'Observation scheduled for the fall evaluation cycle.', 4, '15:00:00');
 
-INSERT INTO SurveyResponse(SurveyResponseID, CycleID, ProfessorID, SignupID, Role, SubmissionDate, SubmissionTime,
+INSERT INTO PostObservationSurveyResponse(SurveyResponseID, CycleID, ProfessorID, SignupID, Role, SubmissionDate, SubmissionTime,
     ProcessStatus, Difficulties, ImprovementConditions)
 Values
 (1, 2, 1, 1, 'Observee', '2026-10-16', '12:00:00', 'Processed', 'No major difficulties.', 'Additional classroom technology support would be helpful.'),
