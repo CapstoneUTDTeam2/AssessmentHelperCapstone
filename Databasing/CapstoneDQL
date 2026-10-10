@@ -98,7 +98,7 @@ SELECT
     sr.ProcessStatus,
     sr.Difficulties,
     sr.ImprovementConditions
-FROM SurveyResponse sr
+FROM PostObservationSurveyResponse sr
 JOIN Professors p
     ON sr.ProfessorID = p.ProfessorID
 JOIN EvaluationCycle ec
