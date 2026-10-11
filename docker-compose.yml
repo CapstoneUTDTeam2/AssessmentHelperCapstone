@@ -10,6 +10,9 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Runs only on first volume create, not on every compose up.
+      - ./Databasing/CapstoneDDLScript.sql:/docker-entrypoint-initdb.d/01-ddl.sql
+      - ./Databasing/CapstoneDMLScript.sql:/docker-entrypoint-initdb.d/02-dml.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
