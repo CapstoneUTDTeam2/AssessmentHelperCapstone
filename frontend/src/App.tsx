@@ -4,8 +4,10 @@ import type { User } from './auth/demoAccounts'
 import Sidebar from './components/Sidebar'
 import CoursePage from './pages/CoursePage'
 import DashboardPage from './pages/DashboardPage'
+import EvaluationsPage from './pages/EvaluationsPage'
 import FacultyPage from './pages/FacultyPage'
 import LoginPage from './pages/LoginPage'
+import ReportsPage from './pages/ReportsPage'
 
 const SESSION_KEY = 'assessment-helper-user'
 const PAGE_KEY = 'assessment-helper-page'
@@ -15,6 +17,8 @@ const PAGES: Record<string, ComponentType> = {
   Dashboard: DashboardPage,
   Faculty: FacultyPage,
   Courses: CoursePage,
+  Evaluations: EvaluationsPage,
+  Reports: ReportsPage,
 }
 
 // Keeps the demo session across page refreshes (cleared when the tab closes).
