@@ -40,6 +40,9 @@ Due / overdue rules live in `Databasing/ProfEvalStat.sql` (`ProfessorEvaluationS
 `api/evaluation_cycle.py` only selects from that view:
 
 - `GET /api/evaluation-status` — every professor
+- `GET /api/evaluation-status?status=Due` — optional filter (`Due`, `Overdue`, `Not Due`, `Unknown`)
+- `GET /api/evaluation-status/due` — professors due this cycle
+- `GET /api/evaluation-status/overdue` — professors overdue this cycle
 - `GET /api/evaluation-status/{professor_id}` — one professor
 
 ## How to run (Docker Compose)
@@ -83,5 +86,8 @@ SELECT * FROM ProfessorEvaluationStatus;
 ```bash
 curl http://127.0.0.1:8000/health/db
 curl http://127.0.0.1:8000/api/evaluation-status
+curl http://127.0.0.1:8000/api/evaluation-status/due
+curl http://127.0.0.1:8000/api/evaluation-status/overdue
+curl 'http://127.0.0.1:8000/api/evaluation-status?status=Due'
 curl http://127.0.0.1:8000/api/evaluation-status/1
 ```
