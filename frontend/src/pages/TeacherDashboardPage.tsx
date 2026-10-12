@@ -245,7 +245,13 @@ function UpcomingItem({ item }: { item: UpcomingEvaluation }) {
         <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium text-white ${KIND_BADGES[item.kind]}`}>
           {item.kind}
         </span>
-        <span className="text-[9px] text-neutral-500">{item.confirmed ? 'Confirmed' : 'Awaiting confirmation'}</span>
+        <span className={`text-[9px] ${item.reportDue ? 'text-[#b3261e]' : 'text-neutral-500'}`}>
+          {item.reportDue
+            ? `Report due ${format(item.reportDue, { month: 'short', day: 'numeric' })}`
+            : item.confirmed
+              ? 'Confirmed'
+              : 'Awaiting confirmation'}
+        </span>
       </div>
     </li>
   )

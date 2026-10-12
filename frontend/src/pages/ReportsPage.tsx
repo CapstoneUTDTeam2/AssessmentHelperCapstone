@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { CYCLE_START, REPORT_SUMMARY, REPORTS } from '../data/reportsMock'
 import type { ReportOutcome, ReportRow, ReportStatus } from '../data/reportsMock'
 import type { FacultyLevel } from '../data/facultyMock'
+import { downloadCsv } from '../utils/csv'
 
 const PAGE_SIZE = 12
 
@@ -82,16 +83,12 @@ function formatDate(date: string, withYear: boolean) {
   })
 }
 
-function downloadCsv(rows: ReportRow[]) {
-  const header = ['Professor', 'Email', 'Level', 'Report', 'Details', 'Date', 'Outcome', 'Status']
-  const lines = [header, ...rows.map((r) => [r.professor, r.email, r.level, r.reportType ?? '', r.reportDetail, r.date ?? '', r.outcome ?? '', r.status])]
-  const csv = lines.map((cells) => cells.map((c) => `"${c.replaceAll('"', '""')}"`).join(',')).join('\n')
-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'reports-fall-2026.csv'
-  link.click()
-  URL.revokeObjectURL(url)
+function exportReports(rows: ReportRow[]) {
+  downloadCsv(
+    'reports-fall-2026.csv',
+    ['Professor', 'Email', 'Level', 'Report', 'Details', 'Date', 'Outcome', 'Status'],
+    rows.map((r) => [r.professor, r.email, r.level, r.reportType ?? '', r.reportDetail, r.date ?? '', r.outcome ?? '', r.status]),
+  )
 }
 
 function ReportsPage() {
@@ -137,7 +134,7 @@ function ReportsPage() {
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => downloadCsv(rows)}
+            onClick={() => exportReports(rows)}
             className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 transition-colors hover:bg-neutral-50"
           >
             Export CSV

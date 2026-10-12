@@ -11,6 +11,7 @@ import LoginPage from './pages/LoginPage'
 import MyProfilePage from './pages/MyProfilePage'
 import ReportsPage from './pages/ReportsPage'
 import TeacherDashboardPage from './pages/TeacherDashboardPage'
+import TeacherEvaluationsPage from './pages/TeacherEvaluationsPage'
 
 const SESSION_KEY = 'assessment-helper-user'
 const PAGE_KEY = 'assessment-helper-page'
@@ -28,6 +29,7 @@ const PAGES: Record<Role, Record<string, ComponentType>> = {
   faculty: {
     Dashboard: TeacherDashboardPage,
     'My Profile': MyProfilePage,
+    Evaluations: TeacherEvaluationsPage,
   },
 }
 

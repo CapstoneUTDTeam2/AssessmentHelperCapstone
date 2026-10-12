@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import SortHeader from '../components/SortHeader'
 import {
   CURRENT_COURSES,
   EVALUATION_HISTORY,
@@ -8,6 +8,8 @@ import {
   UPCOMING,
 } from '../data/teacherMock'
 import type { CurrentCourse, EvaluationOutcome, PastEvaluation, TeachingTerm } from '../data/teacherMock'
+import { useSortedRows } from '../hooks/useSortedRows'
+import type { Comparators } from '../hooks/useSortedRows'
 
 const OUTCOME_PILLS: Record<EvaluationOutcome, string> = {
   'Exceeds expectations': 'bg-[#1c4532]',
@@ -17,21 +19,6 @@ const OUTCOME_PILLS: Record<EvaluationOutcome, string> = {
 
 /** Rows in the profile card that are drawn in the accent color. */
 const HIGHLIGHTED_FIELDS = new Set(['Next evaluation'])
-
-type Sort<K extends string> = { key: K; dir: 'asc' | 'desc' }
-type Comparators<T, K extends string> = Record<K, (a: T, b: T) => number>
-
-/** Sorts rows by the active column; clicking a column again flips direction. */
-function useSortedRows<T, K extends string>(rows: T[], comparators: Comparators<T, K>, initial: NoInfer<Sort<K>>) {
-  const [sort, setSort] = useState(initial)
-  const sorted = useMemo(
-    () => [...rows].sort((a, b) => (sort.dir === 'asc' ? 1 : -1) * comparators[sort.key](a, b)),
-    [rows, comparators, sort],
-  )
-  const toggle = (key: K) =>
-    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }))
-  return { sorted, sort, toggle }
-}
 
 function formatDay(iso: string) {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' })
@@ -305,41 +292,6 @@ function EvaluationHistoryCard() {
         </div>
       )}
     </section>
-  )
-}
-
-function SortHeader<K extends string>({
-  label,
-  sortKey,
-  sort,
-  onSort,
-  first,
-  last,
-}: {
-  label: string
-  sortKey: K
-  sort: Sort<K>
-  onSort: (key: K) => void
-  first?: boolean
-  last?: boolean
-}) {
-  const active = sort.key === sortKey
-  return (
-    <th
-      aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
-      className={`px-2 py-1.5 text-left font-normal ${first ? 'rounded-l' : ''} ${last ? 'rounded-r' : ''}`}
-    >
-      <button
-        type="button"
-        onClick={() => onSort(sortKey)}
-        className={`flex items-center gap-1 whitespace-nowrap ${active ? 'font-medium text-neutral-900' : ''}`}
-      >
-        {label}
-        <span className={active ? 'text-[#e0791a]' : ''} aria-hidden="true">
-          {active ? (sort.dir === 'asc' ? '↑' : '↓') : '↕'}
-        </span>
-      </button>
-    </th>
   )
 }
 
