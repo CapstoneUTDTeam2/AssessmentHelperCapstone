@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { authenticate, DEMO_ACCOUNTS } from '../auth/demoAccounts'
+import { authenticate, demoAccountFor } from '../auth/demoAccounts'
 import type { Role, User } from '../auth/demoAccounts'
 
 const ROLES: Record<Role, { label: string; description: string; viewName: string }> = {
@@ -20,13 +20,12 @@ interface LoginPageProps {
   onLogin: (user: User) => void
 }
 
-const demoCoordinator = DEMO_ACCOUNTS[0]
-
 function LoginPage({ onLogin }: LoginPageProps) {
   const [role, setRole] = useState<Role>('coordinator')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const demo = demoAccountFor(role)
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -155,19 +154,18 @@ function LoginPage({ onLogin }: LoginPageProps) {
         </button>
 
         <div className="mt-5 rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-3 py-2.5 text-[11px] text-neutral-600">
-          <p className="font-medium text-neutral-800">Demo login (Assessment Coordinator)</p>
+          <p className="font-medium text-neutral-800">Demo login ({ROLES[role].label})</p>
           <p className="mt-1">
-            Email: <code className="text-neutral-900">{demoCoordinator.email}</code>
+            Email: <code className="text-neutral-900">{demo.email}</code>
           </p>
           <p>
-            Password: <code className="text-neutral-900">{demoCoordinator.password}</code>
+            Password: <code className="text-neutral-900">{demo.password}</code>
           </p>
           <button
             type="button"
             onClick={() => {
-              setRole('coordinator')
-              setEmail(demoCoordinator.email)
-              setPassword(demoCoordinator.password)
+              setEmail(demo.email)
+              setPassword(demo.password)
               setError(null)
             }}
             className="mt-1.5 text-[#e0791a] hover:underline"

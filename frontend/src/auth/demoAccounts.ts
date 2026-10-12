@@ -23,7 +23,19 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     title: 'Committee Chair',
     role: 'coordinator',
   },
+  {
+    email: 'professor.a@utdallas.edu',
+    password: 'faculty1234',
+    name: 'Professor A',
+    title: 'Faculty',
+    role: 'faculty',
+  },
 ]
+
+/** The demo account shown on the login screen for each role. */
+export function demoAccountFor(role: Role): DemoAccount {
+  return DEMO_ACCOUNTS.find((a) => a.role === role)!
+}
 
 export type AuthResult = { ok: true; user: User } | { ok: false; error: string }
 

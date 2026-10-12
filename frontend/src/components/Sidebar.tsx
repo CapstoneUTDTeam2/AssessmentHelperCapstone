@@ -1,14 +1,9 @@
-import type { User } from '../auth/demoAccounts'
+import type { Role, User } from '../auth/demoAccounts'
 
-const NAV_ITEMS = [
-  'Dashboard',
-  'Faculty',
-  'Courses',
-  'Evaluations',
-  'Reports',
-  'Evaluation Criteria',
-  'Settings',
-]
+const NAV_ITEMS: Record<Role, string[]> = {
+  coordinator: ['Dashboard', 'Faculty', 'Courses', 'Evaluations', 'Reports', 'Evaluation Criteria', 'Settings'],
+  faculty: ['Dashboard', 'My Profile', 'Evaluations', 'Settings'],
+}
 
 interface SidebarProps {
   user: User
@@ -29,7 +24,7 @@ function Sidebar({ user, active, onNavigate, onSignOut }: SidebarProps) {
       </div>
 
       <nav className="mt-6 flex flex-col gap-1" aria-label="Main">
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS[user.role].map((item) => {
           const isActive = item === active
           return (
             <a
