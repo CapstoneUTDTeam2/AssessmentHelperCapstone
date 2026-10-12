@@ -58,11 +58,23 @@ CREATE TABLE Sections (
 CREATE TABLE EvaluationCycle (
     CycleID INT PRIMARY KEY,
     TermID INT NOT NULL,
-    SignUpDeadLine DATE,
-    ObservationDeadLine DATE,
-    FeedbackDeadLine DATE,
+    SignUpDeadLine DATE NOT NULL,
+    ObservationDeadLine DATE NOT NULL,
+    PostObservationFeedbackDeadLine DATE NOT NULL,
+    AppFeedbackDeadLine DATE NOT NULL,
     foreign key (TermID) references AcademicTerm(TermID)
 );
+-- Check constraint that observation deadlines are not before signupdeadlines and feedback happens after observation
+ALTER TABLE EvaluationCycle
+    ADD CONSTRAINT valid_evaluation_deadline_order
+    CHECK (
+        SignUpDeadLine <= ObservationDeadLine
+        AND ObservationDeadLine <= EvaluationCycle.PostObservationFeedbackDeadLine
+    ),
+    ADD CONSTRAINT valid_app_feedback_deadline
+    CHECK (AppFeedbackDeadLine >= ObservationDeadLine);
+
+
 --Empty current report/archieved report (5 versions max)
 CREATE TABLE ObservationTemplate(
     TemplateID INT PRIMARY KEY,
@@ -82,10 +94,51 @@ CREATE TABLE ObservationSignup (
     SignupDate DATE,
     SignupTime TIME,
     Status VARCHAR(20),
-    foreign key (CycleID) references  EvaluationCycle(CycleID),
+    foreign key (CycleID) references EvaluationCycle(CycleID),
     foreign key (ObserveeProfessorID) references Professors(ProfessorID),
     foreign key (SectionID) references Sections(SectionID)
 );
+-- Signup must be on or before the signup deadline, and it must be in the same term as current eval cycle
+CREATE OR REPLACE FUNCTION check_signup_rules()
+RETURNS TRIGGER AS $$
+DECLARE
+    cycle_term   INT;
+    cycle_signup DATE;
+    section_term INT;
+BEGIN
+    SELECT TermID, SignUpDeadLine
+    INTO cycle_term, cycle_signup
+    FROM EvaluationCycle
+    WHERE CycleID = NEW.CycleID;
+ 
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Evaluation cycle does not exist';
+    END IF;
+ 
+    SELECT TermID
+    INTO section_term
+    FROM Sections
+    WHERE SectionID = NEW.SectionID;
+ 
+    IF section_term IS DISTINCT FROM cycle_term THEN
+        RAISE EXCEPTION
+            'Section term must match the evaluation cycle term';
+    END IF;
+ 
+    IF NEW.SignupDate IS NOT NULL AND NEW.SignupDate > cycle_signup THEN
+        RAISE EXCEPTION
+            'Signup date % is after the signup deadline %',
+            NEW.SignupDate, cycle_signup;
+    END IF;
+ 
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+ 
+CREATE TRIGGER validate_signup_rules
+BEFORE INSERT OR UPDATE ON ObservationSignup
+FOR EACH ROW
+EXECUTE FUNCTION check_signup_rules();
 
 CREATE TABLE ObserverRequest(
     RequestID INT PRIMARY KEY,
@@ -95,7 +148,7 @@ CREATE TABLE ObserverRequest(
     RequestTime TIME,
     ExpirationDate DATE,
     ExpirationTime TIME,
-    Status VARCHAR(20),
+    Status VARCHAR(20), -- Pending/Accepted/Declined
     foreign key (SignupID) references ObservationSignup(SignupID),
     foreign key (ObserverProfessorID) references Professors(ProfessorID)
 );
@@ -107,7 +160,16 @@ CREATE TABLE TeachingAssignment (
     foreign key (SectionID) references Sections(SectionID),
     foreign key (ProfessorID) references Professors(ProfessorID)
 );
+
+-- Observee can only sign up for a section they teach
+ALTER TABLE ObservationSignup
+    ADD CONSTRAINT fk_signup_observee_teaches_section
+    FOREIGN KEY (SectionID, ObserveeProfessorID)
+    REFERENCES TeachingAssignment (SectionID, ProfessorID);
+
+
 --Filled out in accordance to the frontend
+--Observations last forever
 -- (currently on hold due to current observation criteria challenges)
 CREATE TABLE Observation (
     ObservationID INT PRIMARY KEY,
@@ -130,6 +192,99 @@ CREATE TABLE Observation (
     foreign key (ObserveeID) references Professors(ProfessorID),
     foreign key (TemplateID) references ObservationTemplate(TemplateID)
 );
+-- Check Constraint to make sure observee matches on signup and observation
+-- Check Constraint to make sure the observee is not the observer
+CREATE OR REPLACE FUNCTION check_observation_consistency()
+RETURNS TRIGGER AS $$
+DECLARE
+    signup_observee INT;
+BEGIN
+    SELECT ObserveeProfessorID
+    INTO signup_observee
+    FROM ObservationSignup
+    WHERE SignupID = NEW.SignupID;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Observation signup does not exist';
+    END IF;
+
+    IF NEW.ObserveeID <> signup_observee THEN
+        RAISE EXCEPTION
+            'Observation observee must match its signup';
+    END IF;
+
+    IF NEW.ObserverProfessorID = NEW.ObserveeID THEN
+        RAISE EXCEPTION
+            'A professor cannot observe themselves';
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER validate_observation_consistency
+BEFORE INSERT OR UPDATE ON Observation
+FOR EACH ROW
+EXECUTE FUNCTION check_observation_consistency();
+
+-- Observations must be on or before the observation deadline, 
+ --and it must be in the same term as current eval cycle
+
+CREATE OR REPLACE FUNCTION check_observation_deadline()
+RETURNS TRIGGER AS $$
+DECLARE
+    obs_deadline DATE;
+    obs_date     DATE;
+BEGIN
+    SELECT ec.ObservationDeadLine
+    INTO obs_deadline
+    FROM ObservationSignup os
+    JOIN EvaluationCycle ec ON ec.CycleID = os.CycleID
+    WHERE os.SignupID = NEW.SignupID;
+ 
+    obs_date := COALESCE(NEW.ScheduledDate, NEW.ObservationDate);
+ 
+    IF obs_deadline IS NOT NULL
+       AND obs_date IS NOT NULL
+       AND obs_date > obs_deadline THEN
+        RAISE EXCEPTION
+            'Observation date % is after the observation deadline %',
+            obs_date, obs_deadline;
+    END IF;
+ 
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+ 
+CREATE TRIGGER validate_observation_deadline
+BEFORE INSERT OR UPDATE ON Observation
+FOR EACH ROW
+EXECUTE FUNCTION check_observation_deadline();
+
+-- Observation can only exist of the observee accepted the observer's request
+
+CREATE OR REPLACE FUNCTION check_observation_request_accepted()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM ObserverRequest orq
+        WHERE orq.SignupID = NEW.SignupID
+          AND orq.ObserverProfessorID = NEW.ObserverProfessorID
+          AND orq.Status = 'Accepted'
+    ) THEN
+        RAISE EXCEPTION
+            'Observee must accept the observer request before an observation can be created';
+    END IF;
+ 
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+ 
+CREATE TRIGGER validate_observation_request_accepted
+BEFORE INSERT OR UPDATE ON Observation
+FOR EACH ROW
+EXECUTE FUNCTION check_observation_request_accepted();
 
 --Post observation survey for database/technology
 CREATE TABLE PostObservationSurveyResponse (
@@ -148,6 +303,49 @@ CREATE TABLE PostObservationSurveyResponse (
     foreign key (SignupID) references ObservationSignup(SignupID)
 );
 
+-- PostObservationSurveys must be on or before the PostObservationSurvey deadline, 
+ --and it must be in the same term as current eval cycle
+
+CREATE OR REPLACE FUNCTION check_survey_rules()
+RETURNS TRIGGER AS $$
+DECLARE
+    signup_cycle INT;
+    fb_deadline  DATE;
+BEGIN
+    SELECT CycleID
+    INTO signup_cycle
+    FROM ObservationSignup
+    WHERE SignupID = NEW.SignupID;
+ 
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Survey signup does not exist';
+    END IF;
+ 
+    IF signup_cycle IS DISTINCT FROM NEW.CycleID THEN
+        RAISE EXCEPTION 'Survey cycle must match its signup cycle';
+    END IF;
+ 
+    SELECT PostObservationFeedbackDeadLine
+    INTO fb_deadline
+    FROM EvaluationCycle
+    WHERE CycleID = NEW.CycleID;
+ 
+    IF NEW.SubmissionDate IS NOT NULL
+       AND NEW.SubmissionDate > fb_deadline THEN
+        RAISE EXCEPTION
+            'Survey submitted % after the feedback deadline %',
+            NEW.SubmissionDate, fb_deadline;
+    END IF;
+ 
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+ 
+CREATE TRIGGER validate_survey_rules
+BEFORE INSERT OR UPDATE ON PostObservationSurveyResponse
+FOR EACH ROW
+EXECUTE FUNCTION check_survey_rules();
+
 CREATE TABLE AppSurveyResponse (
     AppResponseID INT PRIMARY KEY,
     ObservationID INT NOT NULL,
@@ -155,12 +353,89 @@ CREATE TABLE AppSurveyResponse (
         CHECK (Role IN ('Observer', 'Observee')),
     AppImprovements TEXT,
     AppEnjoyments TEXT,
-
-    FOREIGN KEY (ObservationID)
-        REFERENCES Observation(ObservationID),
-
+    SubmissionDate DATE,
+    FOREIGN KEY (ObservationID) REFERENCES Observation(ObservationID),
     UNIQUE (ObservationID, Role)
 );
 
 
---Observations last forever
+-- AppSurveys must be on or before the AppSurvey deadline, 
+ --and it must be in the same term as current eval cycle
+
+CREATE OR REPLACE FUNCTION check_app_survey_rules()
+RETURNS TRIGGER AS $$
+DECLARE
+    app_deadline DATE;
+BEGIN
+    SELECT ec.AppFeedbackDeadLine
+    INTO app_deadline
+    FROM Observation o
+    JOIN ObservationSignup os ON os.SignupID = o.SignupID
+    JOIN EvaluationCycle ec ON ec.CycleID = os.CycleID
+    WHERE o.ObservationID = NEW.ObservationID;
+ 
+    IF NEW.SubmissionDate IS NOT NULL
+       AND app_deadline IS NOT NULL
+       AND NEW.SubmissionDate > app_deadline THEN
+        RAISE EXCEPTION
+            'App survey submitted % after the app feedback deadline %',
+            NEW.SubmissionDate, app_deadline;
+    END IF;
+ 
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+ 
+CREATE TRIGGER validate_app_survey_rules
+BEFORE INSERT OR UPDATE ON AppSurveyResponse
+FOR EACH ROW
+EXECUTE FUNCTION check_app_survey_rules();
+
+
+-- The table that currently holds all possible Criterions for the observations
+CREATE TABLE EvaluationCriterion (
+    CriterionID INT PRIMARY KEY,
+    TemplateID INT NOT NULL,
+    CriterionName VARCHAR(100) NOT NULL,
+    Description TEXT,
+    FOREIGN KEY (TemplateID) REFERENCES ObservationTemplate(TemplateID),
+    UNIQUE (CriterionID, TemplateID)
+);
+
+-- The table that currently holds all ratings for criterions for the observations
+CREATE TABLE ObservationCriterionRating (
+    ObservationID INT NOT NULL,
+    CriterionID INT NOT NULL,
+    TemplateID INT NOT NULL,
+    Rating INT,
+        CONSTRAINT valid_rating_range CHECK (Rating BETWEEN 1 AND 6),
+    Comments TEXT,
+    PRIMARY KEY (ObservationID, CriterionID),
+    FOREIGN KEY (ObservationID) REFERENCES Observation(ObservationID),
+    FOREIGN KEY (CriterionID, TemplateID) REFERENCES EvaluationCriterion(CriterionID, TemplateID)
+);
+-- Check for the criterion existing in the observation, and check if it is between 1-6 (1 to N/A)
+CREATE OR REPLACE FUNCTION check_criterion_template()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM Observation o
+        JOIN EvaluationCriterion ec
+          ON ec.TemplateID = o.TemplateID
+        WHERE o.ObservationID = NEW.ObservationID
+          AND ec.CriterionID = NEW.CriterionID
+          AND ec.TemplateID = NEW.TemplateID
+    ) THEN
+        RAISE EXCEPTION
+            'Criterion must belong to the observation template';
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER validate_criterion_template
+BEFORE INSERT OR UPDATE ON ObservationCriterionRating
+FOR EACH ROW
+EXECUTE FUNCTION check_criterion_template();
