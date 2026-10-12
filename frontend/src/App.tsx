@@ -4,6 +4,7 @@ import type { User } from './auth/demoAccounts'
 import Sidebar from './components/Sidebar'
 import CoursePage from './pages/CoursePage'
 import DashboardPage from './pages/DashboardPage'
+import EvaluationCriteriaPage from './pages/EvaluationCriteriaPage'
 import EvaluationsPage from './pages/EvaluationsPage'
 import FacultyPage from './pages/FacultyPage'
 import LoginPage from './pages/LoginPage'
@@ -19,6 +20,7 @@ const PAGES: Record<string, ComponentType> = {
   Courses: CoursePage,
   Evaluations: EvaluationsPage,
   Reports: ReportsPage,
+  'Evaluation Criteria': EvaluationCriteriaPage,
 }
 
 // Keeps the demo session across page refreshes (cleared when the tab closes).
