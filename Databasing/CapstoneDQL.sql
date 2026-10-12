@@ -156,3 +156,52 @@ GROUP BY
     p.ProfessorName
 ORDER BY
     p.ProfessorName;
+
+--Signups where professor doesn't teach the section
+SELECT
+    os.SignupID,
+    p.ProfessorName AS Observee,
+    c.CourseCode,
+    s.SectionName
+FROM ObservationSignup os
+JOIN Professors p
+    ON p.ProfessorID = os.ObserveeProfessorID
+JOIN Sections s
+    ON s.SectionID = os.SectionID
+JOIN Courses c
+    ON c.CourseID = s.CourseID
+LEFT JOIN TeachingAssignment ta
+    ON ta.ProfessorID = os.ObserveeProfessorID
+   AND ta.SectionID = os.SectionID
+WHERE ta.ProfessorID IS NULL;
+
+-- Observations whose observee doesnt't match the signup
+SELECT
+    o.ObservationID,
+    o.SignupID,
+    o.ObserveeID AS ObservationObservee,
+    os.ObserveeProfessorID AS SignupObservee
+FROM Observation o
+JOIN ObservationSignup os
+    ON os.SignupID = o.SignupID
+WHERE o.ObserveeID <> os.ObserveeProfessorID;
+
+-- Observation Criterion does not belong to the template
+SELECT
+    o.ObservationID,
+    o.TemplateID AS ObservationTemplate,
+    ecr.CriterionID,
+    ec.TemplateID AS CriterionTemplate
+FROM ObservationCriterionRating ecr
+JOIN Observation o
+    ON o.ObservationID = ecr.ObservationID
+JOIN EvaluationCriterion ec
+    ON ec.CriterionID = ecr.CriterionID
+WHERE o.TemplateID <> ec.TemplateID;
+
+-- Signups whose section term differs from the cycle term
+SELECT os.SignupID
+FROM ObservationSignup os
+JOIN EvaluationCycle ec ON ec.CycleID = os.CycleID
+JOIN Sections s ON s.SectionID = os.SectionID
+WHERE s.TermID <> ec.TermID;

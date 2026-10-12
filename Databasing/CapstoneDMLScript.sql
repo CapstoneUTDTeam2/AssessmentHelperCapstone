@@ -1,22 +1,17 @@
---Department(DepartmentID INT, DepartmentName VarChar(50))
---AcademicTerm(TermID INT, Semester VARCHAR(10), YearNum int)
---Courses(CourseID INT, CourseName VARCHAR(50), CourseCode VARCHAR(20), CourseDescription VARCHAR(255))
---Professors(ProfessorID INT ,ProfessorName VARCHAR(50), ProfessorDepartment INT, CurrentLevel VARCHAR(30), StartTermID INT)
---Sections(SectionID INT, SectionName VARCHAR(5), CourseID INT, TermID INT, MeetingDays VARCHAR(20),StartTime TIME, 
-  --EndTime TIME)
---EvaluationCycle(CycleID INT, TermID INT, SignUpDeadLine DATE, ObservationDeadLine DATE, FeedbackDeadLine DATE)
---ObservationTemplate(TemplateID INT, TemplateVersion VARCHAR(100), TemplateContent TEXT, LastUpdateDate DATE, 
-  --LastUpdateTime TIME, isActive BOOLEAN)
---ObservationSignup(SignupID INT, CycleID INT, ObserveeProfessorID INT, SectionID INT, PreferredTimes TEXT, 
-  --SignupDate DATE, SignupTime TIME, Status VARCHAR(20))
---ObserverRequest(RequestID INT, SignupID INT, ObserverProfessorID INT, RequestDate DATE, RequestTime TIME, 
-  --ExpirationDate DATE, ExpirationTime TIME, Status VARCHAR(20))
---TeachingAssignment(SectionID INT, ProfessorID INT)
---Observation(ObservationID INT, SignupID INT, ObservationDate DATE, ObserverProfessorID INT, TemplateID INT, 
- --ScheduledDate DATE, ScheduledTime TIME, CompletedDate DATE, CompletedTime TIME, Status VARCHAR(20), Signee VARCHAR(255),
- --Observer VARCHAR(255), Notes Text, ObserveeID INT NOT NULL, ObservationTime TIME)
---SurveyResponse(SurveyResponseID INT, CycleID INT, ProfessorID INT, SignupID INT, Role VARCHAR(20), SubmissionDate DATE,
-  --SubmissionTime TIME, ProcessStatus VARCHAR(50), Difficulties TEXT, ImprovementConditions TEXT)
+DO $$
+DECLARE
+    t RECORD;
+BEGIN
+    FOR t IN (
+        SELECT tablename
+        FROM pg_tables
+        WHERE schemaname = 'public'
+    ) LOOP
+        EXECUTE 'TRUNCATE TABLE public.'
+            || quote_ident(t.tablename)
+            || ' RESTART IDENTITY CASCADE';
+    END LOOP;
+END $$;
 
 INSERT INTO Department(DepartmentID, DepartmentName)
 Values
@@ -61,11 +56,19 @@ Values
 (5, '001', 5, 5, 'MW', '11:00:00', '12:15:00'),
 (6, '001', 6, 5, 'TR', '13:00:00', '14:15:00');
 
-INSERT INTO EvaluationCycle(CycleID, TermID, SignUpDeadLine, ObservationDeadLine, FeedbackDeadLine)
+INSERT INTO TeachingAssignment(SectionID, ProfessorID)
 Values
-(1, 4, '2026-01-30', '2026-04-15', '2026-05-01'),
-(2, 5, '2026-09-15', '2026-11-15', '2026-12-01');
+(1, 1),
+(2, 2),
+(3, 3),
+(4, 1),
+(5, 4),
+(6, 5);
 
+INSERT INTO EvaluationCycle(CycleID, TermID, SignUpDeadLine, ObservationDeadLine,PostObservationFeedbackDeadLine, AppFeedbackDeadLine)
+Values
+(1, 4, '2026-01-30', '2026-04-15', '2026-05-01', '2026-05-15'),
+(2, 5, '2026-09-15', '2026-11-15', '2026-12-15', '2026-12-15');
 INSERT INTO ObservationTemplate(TemplateID, TemplateVersion, TemplateContent, LastUpdateDate, LastUpdateTime, isActive)
 Values
 (1, '1.0', 'Standard classroom observation template.', '2026-01-10', '09:00:00', FALSE),
@@ -77,24 +80,16 @@ Values
 (1, 2, 1, 1, 'Monday or Wednesday morning', '2026-09-05', '09:30:00', 'Accepted'),
 (2, 2, 2, 2, 'Tuesday morning', '2026-09-06', '10:15:00', 'Accepted'),
 (3, 2, 3, 3, 'Monday afternoon', '2026-09-07', '11:00:00', 'Pending'),
-(4, 2, 4, 4, 'Tuesday afternoon', '2026-09-08', '14:30:00', 'Pending');
+(4, 2, 4, 5, 'Tuesday afternoon', '2026-09-08', '14:30:00', 'Pending');
 
 INSERT INTO ObserverRequest(RequestID, SignupID, ObserverProfessorID, RequestDate, RequestTime, ExpirationDate, 
     ExpirationTime, Status)
 Values
 (1, 1, 2, '2026-09-06', '14:00:00', '2026-09-10', '23:59:00', 'Accepted'),
 (2, 2, 3, '2026-09-07', '15:00:00', '2026-09-11', '23:59:00', 'Accepted'),
-(3, 3, 1, '2026-09-08', '09:00:00', '2026-09-12', '23:59:00', 'Pending'),
-(4, 4, 2, '2026-09-09', '13:00:00', '2026-09-13', '23:59:00', 'Pending');
+(3, 3, 1, '2026-09-08', '09:00:00', '2026-09-12', '23:59:00', 'Accepted'),
+(4, 4, 2, '2026-09-09', '13:00:00', '2026-09-13', '23:59:00', 'Accepted');
 
-INSERT INTO TeachingAssignment(SectionID, ProfessorID)
-Values
-(1, 1),
-(2, 2),
-(3, 3),
-(4, 1),
-(5, 4),
-(6, 5);
 
 INSERT INTO Observation(ObservationID, SignupID, ObservationDate, ObserverProfessorID, TemplateID, ScheduledDate,
     ScheduledTime, CompletedDate, CompletedTime, Status, Signee, Observer, Notes, ObserveeID, ObservationTime)
@@ -111,3 +106,21 @@ Values
 (2, 2, 2, 2, 'Observee', '2026-10-21', '13:30:00', 'Processed', 'Projector connection was unreliable.', 'Improved classroom technology would be beneficial.'),
 (3, 2, 3, 3, 'Observer', '2026-10-27', '14:00:00', 'Pending', 'No difficulties reported.', 'Additional time for observation feedback would be useful.'),
 (4, 2, 4, 4, 'Observer', '2026-11-04', '16:00:00', 'Pending', 'No difficulties reported.', 'None reported.');
+
+INSERT INTO EvaluationCriterion (CriterionID, TemplateID, CriterionName, Description)
+VALUES
+(1, 1, 'Organization',        'Class is structured and follows a clear plan.'),
+(2, 1, 'Clarity',             'Concepts are explained clearly.'),
+(3, 1, 'Engagement',          'Students are actively involved.'),
+(4, 2, 'Organization',        'Class is structured and follows a clear plan.'),
+(5, 2, 'Clarity',             'Concepts are explained clearly.'),
+(6, 2, 'Student Interaction', 'Instructor interacts effectively with students.');
+
+INSERT INTO ObservationCriterionRating (ObservationID, CriterionID, TemplateID, Rating, Comments)
+VALUES
+(1, 4, 2, 5, 'Well organized lecture.'),
+(1, 5, 2, 4, 'Clear explanations.'),
+(1, 6, 2, 6, 'Not applicable this session.'),
+(2, 4, 2, 4, 'Good pacing.'),
+(2, 5, 2, 5, 'Strong examples.'),
+(2, 6, 2, 5, 'Good student participation.');
