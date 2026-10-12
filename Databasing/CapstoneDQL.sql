@@ -138,3 +138,21 @@ JOIN Professors p
 LEFT JOIN ObserverRequest orq
     ON os.SignupID = orq.SignupID
 WHERE orq.SignupID IS NULL;
+
+
+
+-- AHC-215 Get every professor's last completed evaluation date
+SELECT
+    p.ProfessorID,
+    p.ProfessorName,
+    MAX(o.CompletedDate) AS LastEvaluationDate
+FROM Professors p
+LEFT JOIN Observation o
+    ON p.ProfessorID = o.ObserveeID
+    AND o.Status = 'Completed'
+    AND o.CompletedDate IS NOT NULL
+GROUP BY
+    p.ProfessorID,
+    p.ProfessorName
+ORDER BY
+    p.ProfessorName;
