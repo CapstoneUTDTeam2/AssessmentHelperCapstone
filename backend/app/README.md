@@ -37,11 +37,6 @@ Empty `__init__.py` files make these folders importable as packages.
 
 Due / overdue rules live in `Databasing/ProfEvalStat.sql` (`ProfessorEvaluationStatus`):
 
-- Assistant Professor: every **1** calendar year, same semester
-- Associate / Full Professor: every **2** calendar years, same semester
-- After the due semester they are **Overdue**
-- First-semester professors are **Not Due**
-
 `api/evaluation_cycle.py` only selects from that view:
 
 - `GET /api/evaluation-status` — every professor
