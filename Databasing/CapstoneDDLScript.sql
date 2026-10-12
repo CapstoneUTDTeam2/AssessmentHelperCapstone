@@ -63,7 +63,7 @@ CREATE TABLE EvaluationCycle (
     FeedbackDeadLine DATE,
     foreign key (TermID) references AcademicTerm(TermID)
 );
---Empty current report/archieved report SHE WANTS IT LETS GOOO (5 versions max)
+--Empty current report/archieved report (5 versions max)
 CREATE TABLE ObservationTemplate(
     TemplateID INT PRIMARY KEY,
     TemplateVersion VARCHAR(100),
@@ -108,6 +108,7 @@ CREATE TABLE TeachingAssignment (
     foreign key (ProfessorID) references Professors(ProfessorID)
 );
 --Filled out in accordance to the frontend
+-- (currently on hold due to current observation criteria challenges)
 CREATE TABLE Observation (
     ObservationID INT PRIMARY KEY,
     SignupID INT,
@@ -131,6 +132,7 @@ CREATE TABLE Observation (
 );
 
 --Post observation survey for database/technology
+-- Specifically for observee explaining their case
 CREATE TABLE SurveyResponse (
     SurveyResponseID INT PRIMARY KEY,
     CycleID INT,
@@ -147,5 +149,5 @@ CREATE TABLE SurveyResponse (
     foreign key (SignupID) references ObservationSignup(SignupID)
 );
 
---Specifically for observee explaining their case
+
 --Observations last forever
