@@ -1,11 +1,13 @@
-import os
-
 from fastapi import FastAPI
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
+
+from app.api.evaluation_cycle import router as evaluation_cycle_router
+from app.api.observer_requests import router as observer_request_router
+from app.db import engine
 
 app = FastAPI(title="Assessment Helper API")
-
-engine = create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
+app.include_router(observer_request_router)
+app.include_router(evaluation_cycle_router)
 
 
 @app.get("/health")
