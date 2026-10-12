@@ -13,6 +13,7 @@ services:
       # Runs only on first volume create, not on every compose up.
       - ./Databasing/CapstoneDDLScript.sql:/docker-entrypoint-initdb.d/01-ddl.sql
       - ./Databasing/CapstoneDMLScript.sql:/docker-entrypoint-initdb.d/02-dml.sql
+      - ./Databasing/ProfEvalStat.sql:/docker-entrypoint-initdb.d/03-eval-status-view.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
