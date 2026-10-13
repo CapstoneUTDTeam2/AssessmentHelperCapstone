@@ -37,18 +37,24 @@ function EvaluationCriteriaPage() {
   const [sections, setSections] = useState<CriteriaSection[]>(SECTIONS)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<FilterKey>('all')
-  const [selectedId, setSelectedId] = useState<number | null>(8)
-  const [draft, setDraft] = useState<Criterion | null>(() => CRITERIA.find((c) => c.id === 8) ?? null)
+  const [selectedId, setSelectedId] = useState<number | null>(7)
+  const [draft, setDraft] = useState<Criterion | null>(() => CRITERIA.find((c) => c.id === 7) ?? null)
   const dragId = useRef<number | null>(null)
 
   const activeCount = criteria.filter((c) => c.active).length
+
+  // Form numbers follow list order (section by section), so they never skip after removing or reordering.
+  const numbers = useMemo(() => {
+    const ordered = sections.flatMap((s) => criteria.filter((c) => c.sectionId === s.id))
+    return new Map(ordered.map((c, i) => [c.id, i + 1]))
+  }, [criteria, sections])
   const saved = criteria.find((c) => c.id === selectedId) ?? null
   const dirty = draft !== null && saved !== null && JSON.stringify({ ...draft, active: saved.active }) !== JSON.stringify(saved)
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase()
     const match = FILTERS.find((f) => f.key === filter)!.match
-    return criteria.filter((c) => match(c) && (!q || c.text.toLowerCase().includes(q)))
+    return criteria.filter((c) => match(c) && (!q || [c.text, ...c.points].some((t) => t.toLowerCase().includes(q))))
   }, [criteria, search, filter])
 
   const isFiltering = filter !== 'all' || search.trim() !== ''
@@ -66,6 +72,7 @@ function EvaluationCriteriaPage() {
       id: Math.max(0, ...criteria.map((c) => c.id)) + 1,
       sectionId,
       text: 'New criterion',
+      points: [],
       guidance: '',
       appliesTo: 'All',
       usedIn: 0,
@@ -231,7 +238,7 @@ function EvaluationCriteriaPage() {
                                   selected ? 'bg-[#e0791a] text-white' : 'bg-neutral-100 text-neutral-700'
                                 }`}
                               >
-                                {c.id}
+                                {numbers.get(c.id)}
                               </span>
                             </span>
                           </td>
@@ -247,6 +254,15 @@ function EvaluationCriteriaPage() {
                             >
                               {c.text}
                             </button>
+                            {c.points.length > 0 && (
+                              <ul className="mt-0.5 list-disc pl-4 text-[10px] text-neutral-600">
+                                {c.points.map((point, i) => (
+                                  <li key={i} className="truncate" title={point}>
+                                    {point}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
                           </td>
                           <td className="px-2 py-2">
                             <span className={`rounded px-1.5 py-0.5 text-[9px] whitespace-nowrap ${MODALITY_BADGES[c.appliesTo]}`}>
@@ -258,7 +274,7 @@ function EvaluationCriteriaPage() {
                             <Toggle
                               checked={c.active}
                               onChange={(v) => setActive(c.id, v)}
-                              label={`Criterion ${c.id} active`}
+                              label={`Criterion ${numbers.get(c.id)} active`}
                             />
                           </td>
                         </tr>
@@ -285,6 +301,7 @@ function EvaluationCriteriaPage() {
             <CriterionEditor
               key={draft.id}
               draft={draft}
+              number={numbers.get(draft.id) ?? draft.id}
               sections={sections}
               dirty={dirty}
               onChange={setDraft}
@@ -320,6 +337,7 @@ function EvaluationCriteriaPage() {
 
 interface CriterionEditorProps {
   draft: Criterion
+  number: number
   sections: CriteriaSection[]
   dirty: boolean
   onChange: (draft: Criterion) => void
@@ -327,13 +345,13 @@ interface CriterionEditorProps {
   onSave: () => void
 }
 
-function CriterionEditor({ draft, sections, dirty, onChange, onCancel, onSave }: CriterionEditorProps) {
+function CriterionEditor({ draft, number, sections, dirty, onChange, onCancel, onSave }: CriterionEditorProps) {
   const set = <K extends keyof Criterion>(key: K, value: Criterion[K]) => onChange({ ...draft, [key]: value })
   const field = 'mt-1.5 w-full rounded-md border border-neutral-200 bg-white px-2.5 py-2 text-[11px] text-neutral-900 focus:border-[#1c4532] focus:outline-none'
 
   return (
     <section className="rounded-lg border border-neutral-200 bg-white p-4">
-      <h2 className="text-sm font-semibold text-neutral-900">Edit criterion #{draft.id}</h2>
+      <h2 className="text-sm font-semibold text-neutral-900">Edit criterion #{number}</h2>
       <p className="text-[10px] text-neutral-500">Changes apply to new observation forms only</p>
 
       <label className="mt-4 block text-[10px] font-medium text-neutral-700">
@@ -351,6 +369,40 @@ function CriterionEditor({ draft, sections, dirty, onChange, onCancel, onSave }:
           ))}
         </select>
       </label>
+
+      <fieldset className="mt-3">
+        <legend className="text-[10px] font-medium text-neutral-700">Bullet points (optional)</legend>
+        <ul className="mt-1.5 space-y-1.5">
+          {draft.points.map((point, i) => (
+            <li key={i} className="flex items-center gap-1.5">
+              <span className="text-neutral-400" aria-hidden="true">
+                •
+              </span>
+              <input
+                value={point}
+                aria-label={`Bullet point ${i + 1}`}
+                onChange={(e) => set('points', draft.points.map((p, j) => (j === i ? e.target.value : p)))}
+                className={field.replace('mt-1.5 ', '')}
+              />
+              <button
+                type="button"
+                aria-label={`Remove bullet point ${i + 1}`}
+                onClick={() => set('points', draft.points.filter((_, j) => j !== i))}
+                className="rounded px-1.5 py-1 text-neutral-400 hover:bg-neutral-100 hover:text-[#b3261e]"
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+        <button
+          type="button"
+          onClick={() => set('points', [...draft.points, ''])}
+          className="mt-1.5 text-[10px] text-[#e0791a] hover:underline"
+        >
+          + Add bullet point
+        </button>
+      </fieldset>
 
       <label className="mt-3 block text-[10px] font-medium text-neutral-700">
         Guidance for observers (optional)

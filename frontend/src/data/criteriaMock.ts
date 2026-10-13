@@ -9,10 +9,12 @@ export interface CriteriaSection {
 }
 
 export interface Criterion {
-  /** Number shown on the observation form. */
+  /** Stable identifier. The number shown on the form is the criterion's position in the list. */
   id: number
   sectionId: string
   text: string
+  /** Sub-points listed under the criterion on the observation form. */
+  points: string[]
   guidance: string
   appliesTo: Modality
   /** Number of submitted reports that used this criterion. */
@@ -48,30 +50,30 @@ function criterion(
   appliesTo: Modality,
   usedIn: number,
   guidance = '',
+  points: string[] = [],
 ): Criterion {
-  return { id, sectionId, text, guidance, appliesTo, usedIn, active: true, required: true, notesOnLowRating: true }
+  return { id, sectionId, text, points, guidance, appliesTo, usedIn, active: true, required: true, notesOnLowRating: true }
 }
 
 export const CRITERIA: Criterion[] = [
-  criterion(1, 'setup', 'Canvas course shell prepared according to college guidelines', 'Online / Hybrid', 36),
-  criterion(2, 'setup', 'Intentional and organized online course structure', 'Online / Hybrid', 36),
-  criterion(3, 'setup', 'Clear expectations about communication, interaction, and participation', 'All', 41),
-  criterion(4, 'setup', 'Course welcome and introductions', 'All', 41),
-  criterion(5, 'setup', 'Contact information and methods of contact', 'All', 41),
-  criterion(9, 'setup', 'Maintenance and updating of course content and resources', 'All', 39),
-  criterion(6, 'engagement', 'Regular and active engagement with students', 'All', 41),
-  criterion(7, 'engagement', 'Opportunities for interaction and collaboration throughout the course', 'All', 41),
+  criterion(1, 'setup', 'Canvas course shell prepared according to college guidelines testing', 'Online / Hybrid', 36, '', [
+    'Clear expectations about communication, interaction, and participation',
+  ]),
+  criterion(2, 'setup', 'Intentional and organized lecture for the day', 'Online / Hybrid', 36),
+  criterion(3, 'setup', 'Course welcome and introductions', 'All', 41),
+  criterion(4, 'setup', 'Contact information and methods of contact', 'All', 41),
+  criterion(5, 'engagement', 'Regular and active engagement with students', 'All', 41),
+  criterion(6, 'engagement', 'Opportunities for interaction and collaboration throughout the observed lecture', 'All', 41),
   criterion(
-    8,
+    7,
     'instruction',
     'Clarity of teaching instruction',
     'All',
     41,
     'May include: explaining concepts clearly, using examples, checking for understanding, connecting to prior learning.',
   ),
-  criterion(10, 'instruction', 'Pace of teaching', 'All', 41),
-  criterion(12, 'instruction', "Quality of instructor's handling of student questions", 'In person', 22),
-  criterion(13, 'instruction', 'Knowledge and preparedness of course content', 'All', 41),
-  criterion(11, 'assessment', 'Course alignment', 'All', 39),
-  criterion(14, 'assessment', 'Opportunities for students to recover from early academic setbacks', 'All', 35),
+  criterion(8, 'instruction', 'Pace of teaching', 'All', 41),
+  criterion(9, 'instruction', "Quality of instructor's handling of student questions", 'In person', 22),
+  criterion(10, 'instruction', 'Knowledge and preparedness of course content', 'All', 41),
+  criterion(11, 'assessment', 'Material alignment with the lecture', 'All', 39),
 ]
