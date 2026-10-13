@@ -1,6 +1,6 @@
 # Assessment Helper backend (`app/`)
 
-FastAPI backend for faculty evaluation: health checks, evaluation-cycle status, and documented observer-request endpoints.
+FastAPI backend for faculty evaluation: health checks, evaluation-cycle status, current-semester observee classes, and documented observer-request endpoints.
 
 Requests hit `main.py`, which mounts routers from `api/`. Evaluation status is read from the database view, not recalculated in Python.
 
@@ -40,7 +40,16 @@ Due / overdue rules live in `Databasing/ProfEvalStat.sql` (`ProfessorEvaluationS
 `api/evaluation_cycle.py` only selects from that view:
 
 - `GET /api/evaluation-status` — every professor
+- `GET /api/evaluation-status?status=Due` — optional filter (`Due`, `Overdue`, `Not Due`, `Unknown`)
+- `GET /api/evaluation-status/due` — professors due this cycle
+- `GET /api/evaluation-status/overdue` — professors overdue this cycle
 - `GET /api/evaluation-status/{professor_id}` — one professor
+
+### Observee current-semester classes (`AHC-223`)
+
+`TeachingAssignment` + `Sections` + `Courses` for the latest Spring/Fall `EvaluationCycle` term:
+
+- `GET /api/observees/{professor_id}/classes` — sections that observee teaches this semester
 
 ## How to run (Docker Compose)
 
@@ -83,5 +92,9 @@ SELECT * FROM ProfessorEvaluationStatus;
 ```bash
 curl http://127.0.0.1:8000/health/db
 curl http://127.0.0.1:8000/api/evaluation-status
+curl http://127.0.0.1:8000/api/evaluation-status/due
+curl http://127.0.0.1:8000/api/evaluation-status/overdue
+curl 'http://127.0.0.1:8000/api/evaluation-status?status=Due'
 curl http://127.0.0.1:8000/api/evaluation-status/1
+curl http://127.0.0.1:8000/api/observees/1/classes
 ```

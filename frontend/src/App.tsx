@@ -1,121 +1,101 @@
 import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import type { ComponentType } from 'react'
+import type { Role, User } from './auth/demoAccounts'
+import Sidebar from './components/Sidebar'
+import CoursePage from './pages/CoursePage'
+import DashboardPage from './pages/DashboardPage'
+import EvaluationCriteriaPage from './pages/EvaluationCriteriaPage'
+import EvaluationsPage from './pages/EvaluationsPage'
+import FacultyPage from './pages/FacultyPage'
+import LoginPage from './pages/LoginPage'
+import MyProfilePage from './pages/MyProfilePage'
+import ReportsPage from './pages/ReportsPage'
+import TeacherDashboardPage from './pages/TeacherDashboardPage'
+import TeacherEvaluationsPage from './pages/TeacherEvaluationsPage'
+
+const SESSION_KEY = 'assessment-helper-user'
+const PAGE_KEY = 'assessment-helper-page'
+
+// Sidebar items that have a page so far, per role; other items are ignored for now.
+const PAGES: Record<Role, Record<string, ComponentType>> = {
+  coordinator: {
+    Dashboard: DashboardPage,
+    Faculty: FacultyPage,
+    Courses: CoursePage,
+    Evaluations: EvaluationsPage,
+    Reports: ReportsPage,
+    'Evaluation Criteria': EvaluationCriteriaPage,
+  },
+  faculty: {
+    Dashboard: TeacherDashboardPage,
+    'My Profile': MyProfilePage,
+    Evaluations: TeacherEvaluationsPage,
+  },
+}
+
+// Keeps the demo session across page refreshes (cleared when the tab closes).
+function load(key: string): string | null {
+  try {
+    return sessionStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function save(key: string, value: string | null) {
+  try {
+    if (value === null) sessionStorage.removeItem(key)
+    else sessionStorage.setItem(key, value)
+  } catch {
+    // Storage unavailable; the session just won't survive a refresh.
+  }
+}
+
+function loadUser(): User | null {
+  const raw = load(SESSION_KEY)
+  try {
+    return raw ? (JSON.parse(raw) as User) : null
+  } catch {
+    return null
+  }
+}
+
+function loadPage(): string {
+  return load(PAGE_KEY) ?? 'Dashboard'
+}
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [user, setUser] = useState<User | null>(loadUser)
+  const [page, setPage] = useState<string>(loadPage)
 
+  const handleLogin = (u: User) => {
+    save(SESSION_KEY, JSON.stringify(u))
+    setUser(u)
+  }
+
+  const handleSignOut = () => {
+    save(SESSION_KEY, null)
+    save(PAGE_KEY, null)
+    setUser(null)
+    setPage('Dashboard')
+  }
+
+  const handleNavigate = (item: string) => {
+    if (!user || !(item in PAGES[user.role])) return
+    save(PAGE_KEY, item)
+    setPage(item)
+  }
+
+  if (!user) return <LoginPage onLogin={handleLogin} />
+
+  const pages = PAGES[user.role]
+  const current = page in pages ? page : 'Dashboard'
+  const Page = pages[current]
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+    <div className="flex min-h-screen bg-neutral-100 font-sans">
+      <Sidebar user={user} active={current} onNavigate={handleNavigate} onSignOut={handleSignOut} />
+      <Page />
+    </div>
   )
 }
 

@@ -1,9 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 
 from app.db import engine
 
 router = APIRouter(prefix="/api", tags=["evaluation-cycle"])
+
+ALLOWED_STATUSES = ("Due", "Overdue", "Not Due", "Unknown")
 
 # Status comes from Databasing/ProfEvalStat.sql (AHC-218). Do not recompute here.
 STATUS_SQL = """
@@ -20,6 +22,10 @@ FROM ProfessorEvaluationStatus
 WHERE (
     CAST(:professor_id AS INTEGER) IS NULL
     OR professorid = CAST(:professor_id AS INTEGER)
+)
+AND (
+    CAST(:status AS TEXT) IS NULL
+    OR evaluationstatus = CAST(:status AS TEXT)
 )
 ORDER BY professorname
 """
@@ -57,14 +63,57 @@ def _status_payload(row):
     }
 
 
-# What: list every professor's evaluation-cycle status from ProfessorEvaluationStatus.
-@router.get("/evaluation-status")
-def list_evaluation_status():
-    # Input: none
-    # Output: current term plus each row from the SQL view
-    current = _load_current_cycle()
+def _load_professors(professor_id=None, status=None):
     with engine.connect() as conn:
-        rows = conn.execute(text(STATUS_SQL), {"professor_id": None}).mappings().all()
+        return conn.execute(
+            text(STATUS_SQL),
+            {"professor_id": professor_id, "status": status},
+        ).mappings().all()
+
+
+# What: list professors from ProfessorEvaluationStatus, optionally filtered by status.
+@router.get("/evaluation-status")
+def list_evaluation_status(
+    status: str | None = Query(
+        default=None,
+        description="Due, Overdue, Not Due, or Unknown",
+    ),
+):
+    # Input: optional status query param
+    # Output: current term plus matching professors
+    if status is not None and status not in ALLOWED_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"status must be one of: {', '.join(ALLOWED_STATUSES)}",
+        )
+    current = _load_current_cycle()
+    rows = _load_professors(status=status)
+    return {
+        "current_term": current,
+        "professors": [_status_payload(row) for row in rows],
+    }
+
+
+# What: return professors who are Due this evaluation cycle.
+@router.get("/evaluation-status/due")
+def list_due_professors():
+    # Input: none
+    # Output: current term plus professors with EvaluationStatus = Due
+    current = _load_current_cycle()
+    rows = _load_professors(status="Due")
+    return {
+        "current_term": current,
+        "professors": [_status_payload(row) for row in rows],
+    }
+
+
+# What: return professors who are Overdue this evaluation cycle.
+@router.get("/evaluation-status/overdue")
+def list_overdue_professors():
+    # Input: none
+    # Output: current term plus professors with EvaluationStatus = Overdue
+    current = _load_current_cycle()
+    rows = _load_professors(status="Overdue")
     return {
         "current_term": current,
         "professors": [_status_payload(row) for row in rows],
@@ -77,13 +126,10 @@ def get_evaluation_status(professor_id: int):
     # Input: professor_id
     # Output: that professor's row from the SQL view
     current = _load_current_cycle()
-    with engine.connect() as conn:
-        row = conn.execute(
-            text(STATUS_SQL), {"professor_id": professor_id}
-        ).mappings().first()
-    if row is None:
+    rows = _load_professors(professor_id=professor_id)
+    if not rows:
         raise HTTPException(status_code=404, detail=f"Faculty {professor_id} not found")
     return {
         "current_term": current,
-        **_status_payload(row),
+        **_status_payload(rows[0]),
     }
