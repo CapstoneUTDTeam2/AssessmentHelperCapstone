@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { SignupActions, SignupStatus } from '../components/SignupActions'
 import {
   TEACHER_PROFILE,
   TEACHER_TODAY,
@@ -109,6 +110,7 @@ function TeacherDashboardPage() {
           <p className="mt-1 text-xs text-neutral-500">
             Fall 2026 · Week of {weekLabel(mondayOf(TEACHER_TODAY))} · {evaluationsThisMonth} evaluations this month
           </p>
+          <SignupStatus />
         </div>
         <div className="flex gap-2">
           <button
@@ -117,12 +119,7 @@ function TeacherDashboardPage() {
           >
             Edit Profile
           </button>
-          <button
-            type="button"
-            className="rounded-md bg-[#e0791a] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[#c96a12]"
-          >
-            Sign Up to Be Observed
-          </button>
+          <SignupActions />
         </div>
       </header>
 

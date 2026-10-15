@@ -3,7 +3,7 @@
 
 export type FacultyLevel = 'Assistant Prof.' | 'Associate Prof.' | 'Full Prof.' | 'Lecturer'
 
-export type StatusTone = 'due' | 'overdue' | 'ok'
+export type StatusTone = 'due' | 'overdue' | 'ok' | 'unknown'
 
 export type EventKind = 'Observed' | 'Observing' | 'Evaluation'
 
