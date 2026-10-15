@@ -8,4 +8,10 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  server: {
+    // Forward API calls to the FastAPI backend (docker-compose exposes it on 8000).
+    proxy: {
+      '/api': process.env.VITE_API_PROXY_TARGET ?? 'http://localhost:8000',
+    },
+  },
 })

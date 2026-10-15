@@ -1,5 +1,6 @@
-import { Fragment, useMemo, useState } from 'react'
-import { FACULTY, TOTAL_FACULTY } from '../data/facultyMock'
+import { Fragment, useEffect, useMemo, useState } from 'react'
+import { getFaculty } from '../api/faculty'
+import type { CurrentTerm } from '../api/evaluationStatus'
 import { LEVEL_COLORS } from '../theme'
 import type {
   EvaluationEvent,
@@ -14,12 +15,14 @@ const STATUS_PILLS: Record<StatusTone, string> = {
   due: 'bg-[#e0791a]',
   overdue: 'bg-[#b3261e]',
   ok: 'bg-[#3f8a55]',
+  unknown: 'bg-neutral-500',
 }
 
 const PROGRESS_BARS: Record<StatusTone, string> = {
   due: 'bg-[#e0791a]',
   overdue: 'bg-[#b3261e]',
   ok: 'bg-[#3f8a55]',
+  unknown: 'bg-neutral-500',
 }
 
 const EVENT_STYLES: Record<EventKind, { dot: string; badge: string }> = {
@@ -59,32 +62,55 @@ const COMPARATORS: Record<SortKey, (a: FacultyMember, b: FacultyMember) => numbe
   next: (a, b) => a.nextEvaluationDate.localeCompare(b.nextEvaluationDate),
   name: (a, b) => a.name.localeCompare(b.name),
   level: (a, b) => a.level.localeCompare(b.level),
-  courses: (a, b) => a.courses[0].localeCompare(b.courses[0]),
-  progress: (a, b) => a.completed / a.required - b.completed / b.required,
+  courses: (a, b) => (a.courses[0] ?? '').localeCompare(b.courses[0] ?? ''),
+  progress: (a, b) => progress(a) - progress(b),
+}
+
+/** Share of required evaluations completed; 0 when none are required yet. */
+function progress(f: FacultyMember) {
+  return f.required ? f.completed / f.required : 0
 }
 
 const COLUMNS: { label: string; sortKey: SortKey }[] = [
   { label: 'Faculty', sortKey: 'name' },
   { label: 'Level', sortKey: 'level' },
-  { label: 'Courses (Fall 2026)', sortKey: 'courses' },
+  { label: 'Courses', sortKey: 'courses' },
   { label: 'Evaluation obligations', sortKey: 'progress' },
   { label: 'Evaluation status', sortKey: 'next' },
 ]
 
+type LoadState =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ready'; term: CurrentTerm; members: FacultyMember[] }
+
 function FacultyPage() {
   const [search, setSearch] = useState('')
   const [level, setLevel] = useState<(typeof LEVEL_OPTIONS)[number]>('All levels')
-  const [filter, setFilter] = useState<FilterKey | null>('due')
+  const [filter, setFilter] = useState<FilterKey | null>(null)
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'next', dir: 'asc' })
-  const [expanded, setExpanded] = useState<Set<number>>(() => new Set([1]))
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set())
+  const [load, setLoad] = useState<LoadState>({ kind: 'loading' })
 
-  const dueCount = FACULTY.filter((f) => f.dueThisCycle).length
-  const outstandingCount = FACULTY.filter((f) => f.statusTone !== 'ok').length
+  useEffect(() => {
+    const controller = new AbortController()
+    getFaculty(controller.signal)
+      .then(({ term, members }) => setLoad({ kind: 'ready', term, members }))
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return
+        setLoad({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to load faculty' })
+      })
+    return () => controller.abort()
+  }, [])
+
+  const faculty = useMemo(() => (load.kind === 'ready' ? load.members : []), [load])
+  const dueCount = faculty.filter((f) => f.statusTone === 'due').length
+  const overdueCount = faculty.filter((f) => f.statusTone === 'overdue').length
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase()
     const match = filter ? FILTERS.find((f) => f.key === filter)!.match : () => true
-    return FACULTY.filter(
+    return faculty.filter(
       (f) =>
         match(f) &&
         (level === 'All levels' || f.level === level) &&
@@ -94,7 +120,7 @@ function FacultyPage() {
       const cmp = COMPARATORS[sort.key](a, b)
       return sort.dir === 'asc' ? cmp : -cmp
     })
-  }, [search, level, filter, sort])
+  }, [faculty, search, level, filter, sort])
 
   const toggleSort = (key: SortKey) =>
     setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }))
@@ -113,8 +139,11 @@ function FacultyPage() {
         <div>
           <h1 className="text-xl font-semibold text-neutral-900">Faculty Overview</h1>
           <p className="mt-1 text-xs text-neutral-500">
-            {TOTAL_FACULTY} faculty · Fall 2026 · {dueCount} due for evaluation, {outstandingCount} with
-            outstanding evaluations
+            {load.kind === 'ready'
+              ? `${faculty.length} faculty · ${load.term.semester} ${load.term.year} · ${dueCount} due for evaluation, ${overdueCount} overdue`
+              : load.kind === 'loading'
+                ? 'Loading faculty…'
+                : 'Faculty data unavailable'}
           </p>
         </div>
         <div className="flex gap-2">
@@ -255,7 +284,7 @@ function FacultyPage() {
                         <span className={`h-7 w-7 shrink-0 rounded-full ${LEVEL_COLORS[member.level]}`} aria-hidden="true" />
                         <div>
                           <p className="text-xs font-semibold text-neutral-900">{member.name}</p>
-                          <p className="text-[10px] text-neutral-500">{member.email}</p>
+                          {member.email && <p className="text-[10px] text-neutral-500">{member.email}</p>}
                         </div>
                       </div>
                     </td>
@@ -266,6 +295,7 @@ function FacultyPage() {
                     </td>
                     <td className="px-2 py-2.5">
                       <div className="flex flex-wrap gap-1">
+                        {member.courses.length === 0 && <span className="text-neutral-400">—</span>}
                         {member.courses.map((course) => (
                           <span key={course} className="rounded border border-neutral-200 px-1.5 py-0.5 text-[10px] text-neutral-800">
                             {course}
@@ -274,22 +304,28 @@ function FacultyPage() {
                       </div>
                     </td>
                     <td className="px-2 py-2.5">
-                      <p className="text-[10px] text-neutral-800">
-                        {member.completed} of {member.required} evaluations completed
-                      </p>
-                      <div
-                        className="mt-1 h-1 w-28 rounded-full bg-neutral-200"
-                        role="progressbar"
-                        aria-valuemin={0}
-                        aria-valuemax={member.required}
-                        aria-valuenow={member.completed}
-                        aria-label={`${member.name} evaluations completed`}
-                      >
-                        <div
-                          className={`h-1 rounded-full ${PROGRESS_BARS[member.statusTone]}`}
-                          style={{ width: `${Math.max((member.completed / member.required) * 100, 4)}%` }}
-                        />
-                      </div>
+                      {member.required === 0 ? (
+                        <span className="text-neutral-400">—</span>
+                      ) : (
+                        <>
+                          <p className="text-[10px] text-neutral-800">
+                            {member.completed} of {member.required} evaluations completed
+                          </p>
+                          <div
+                            className="mt-1 h-1 w-28 rounded-full bg-neutral-200"
+                            role="progressbar"
+                            aria-valuemin={0}
+                            aria-valuemax={member.required}
+                            aria-valuenow={member.completed}
+                            aria-label={`${member.name} evaluations completed`}
+                          >
+                            <div
+                              className={`h-1 rounded-full ${PROGRESS_BARS[member.statusTone]}`}
+                              style={{ width: `${Math.max(progress(member) * 100, 4)}%` }}
+                            />
+                          </div>
+                        </>
+                      )}
                     </td>
                     <td className="px-2 py-2.5">
                       <span className={`rounded-full px-2.5 py-1 text-[10px] font-medium whitespace-nowrap text-white ${STATUS_PILLS[member.statusTone]}`}>
@@ -318,8 +354,15 @@ function FacultyPage() {
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={COLUMNS.length + 2} className="py-10 text-center text-neutral-500">
-                  No faculty match these filters.
+                <td
+                  colSpan={COLUMNS.length + 2}
+                  className={`py-10 text-center ${load.kind === 'error' ? 'text-[#b3261e]' : 'text-neutral-500'}`}
+                >
+                  {load.kind === 'loading'
+                    ? 'Loading faculty…'
+                    : load.kind === 'error'
+                      ? `Couldn't load faculty: ${load.message}`
+                      : 'No faculty match these filters.'}
                 </td>
               </tr>
             )}
