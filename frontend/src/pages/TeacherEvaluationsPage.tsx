@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react'
+import type { KeyboardEvent } from 'react'
+import { SignupActions, SignupStatus } from '../components/SignupActions'
 import SortHeader from '../components/SortHeader'
 import {
   AVAILABLE_OBSERVERS,
@@ -14,6 +16,7 @@ import type { HistoryEntry, HistoryType, ObserverMatch, UpcomingEvaluation, Upco
 import { useSortedRows } from '../hooks/useSortedRows'
 import type { Comparators } from '../hooks/useSortedRows'
 import { downloadCsv } from '../utils/csv'
+import type { PageProps } from '../pageProps'
 
 const KIND_BADGES: Record<UpcomingKind, string> = {
   'Being observed': 'bg-[#e0791a] text-white',
@@ -48,8 +51,15 @@ const HISTORY_COMPARATORS: Comparators<HistoryEntry, 'date' | 'type' | 'with' | 
   status: (a, b) => a.status.localeCompare(b.status),
 }
 
-function TeacherEvaluationsPage() {
+type Tab = 'upcoming' | 'history' | 'matching' | 'requests'
+type RequestAnswer = 'accepted' | 'declined'
+
+function TeacherEvaluationsPage({ navigate }: PageProps) {
+  const [tab, setTab] = useState<Tab>('upcoming')
   const [confirmedIds, setConfirmedIds] = useState<Set<number>>(() => new Set())
+  // Kept here so requests and answers survive switching tabs.
+  const [requested, setRequested] = useState<Set<number>>(() => new Set())
+  const [answers, setAnswers] = useState<Record<number, RequestAnswer>>({})
   const upcoming = useMemo(
     () => UPCOMING.map((u) => (confirmedIds.has(u.id) ? { ...u, confirmed: true } : u)),
     [confirmedIds],
@@ -58,71 +68,143 @@ function TeacherEvaluationsPage() {
   const toGive = upcoming.filter((u) => u.kind === 'Observing')
   const awaiting = upcoming.filter((u) => !u.confirmed).length
   const reportsDue = upcoming.filter((u) => u.reportDue).sort((a, b) => a.reportDue!.localeCompare(b.reportDue!))
+  const pendingRequests = OBSERVER_REQUESTS.filter((r) => !answers[r.id]).length
   const req = EVALUATION_REQUIREMENT
 
+  const tabs: { id: Tab; label: string; count?: number }[] = [
+    { id: 'upcoming', label: 'Upcoming', count: awaiting },
+    { id: 'history', label: 'History' },
+    { id: 'matching', label: 'Observer Matching' },
+    { id: 'requests', label: 'Observation Requests', count: pendingRequests },
+  ]
+
   return (
-    <main className="min-w-0 flex-1 px-6 py-7">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-neutral-900">Evaluations</h1>
-          <p className="mt-1 text-xs text-neutral-500">
-            Your evaluation cycle, evaluations you receive, and evaluations you give · Fall 2026
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 transition-colors hover:bg-neutral-50"
-          >
-            Submit Evaluation Report
-          </button>
-          <button
-            type="button"
-            className="rounded-md bg-[#e0791a] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[#c96a12]"
-          >
-            Sign Up to Observe
-          </button>
-        </div>
-      </header>
+    <main className="flex min-w-0 flex-1 flex-col">
+      <TabBar tabs={tabs} active={tab} onChange={setTab} />
 
-      <div className="mt-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <StatCard
-          label="Next formal evaluation"
-          value={TEACHER_PROFILE.nextEvaluation}
-          detail={`Due ${req.nextDue} · ${req.cycle}`}
-        />
-        <StatCard
-          label="Evaluations received"
-          value={`${req.received} of ${req.required}`}
-          detail={`${req.required - req.received} more required this cycle`}
-          warn={req.received < req.required}
-        />
-        <StatCard
-          label="Evaluations to give"
-          value={String(toGive.length)}
-          detail={awaiting > 0 ? `${awaiting} awaiting your confirmation` : 'All confirmed'}
-          warn={awaiting > 0}
-        />
-        <StatCard
-          label="Reports due"
-          value={String(reportsDue.length)}
-          detail={
-            reportsDue.length > 0
-              ? `${reportsDue[0].otherProfessor} · due ${format(reportsDue[0].reportDue!, { month: 'short', day: 'numeric' })}`
-              : 'Nothing due'
-          }
-          danger={reportsDue.length > 0}
-        />
-      </div>
+      <div className="px-6 py-7">
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold text-neutral-900">Evaluations</h1>
+            <p className="mt-1 text-xs text-neutral-500">
+              Your evaluation cycle, evaluations you receive, and evaluations you give · Fall 2026
+            </p>
+            <SignupStatus />
+          </div>
+          <div className="flex gap-2">
+            <SignupActions />
+          </div>
+        </header>
 
-      <div className="mt-4 grid items-start gap-4 xl:grid-cols-[1fr_276px]">
-        <div className="flex min-w-0 flex-col gap-4">
-          <UpcomingCard items={upcoming} onConfirm={(id) => setConfirmedIds((prev) => new Set(prev).add(id))} />
-          <HistoryCard />
+        <div className="mt-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <StatCard
+            label="Next formal evaluation"
+            value={TEACHER_PROFILE.nextEvaluation}
+            detail={`Due ${req.nextDue} · ${req.cycle}`}
+          />
+          <StatCard
+            label="Evaluations received"
+            value={`${req.received} of ${req.required}`}
+            detail={`${req.required - req.received} more required this cycle`}
+            warn={req.received < req.required}
+          />
+          <StatCard
+            label="Evaluations to give"
+            value={String(toGive.length)}
+            detail={awaiting > 0 ? `${awaiting} awaiting your confirmation` : 'All confirmed'}
+            warn={awaiting > 0}
+          />
+          <StatCard
+            label="Reports due"
+            value={String(reportsDue.length)}
+            detail={
+              reportsDue.length > 0
+                ? `${reportsDue[0].otherProfessor} · due ${format(reportsDue[0].reportDue!, { month: 'short', day: 'numeric' })}`
+                : 'Nothing due'
+            }
+            danger={reportsDue.length > 0}
+          />
         </div>
-        <ObserverMatchingCard />
+
+        <div role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`} className="mt-4">
+          {tab === 'upcoming' && (
+            <UpcomingCard
+              items={upcoming}
+              onConfirm={(id) => setConfirmedIds((prev) => new Set(prev).add(id))}
+              onOpenReport={(id) => navigate('Observation Report', String(id))}
+            />
+          )}
+          {tab === 'history' && <HistoryCard />}
+          {tab === 'matching' && (
+            <ObserverMatchingCard requested={requested} onRequest={(id) => setRequested((prev) => new Set(prev).add(id))} />
+          )}
+          {tab === 'requests' && (
+            <ObservationRequestsCard answers={answers} onAnswer={(id, a) => setAnswers((prev) => ({ ...prev, [id]: a }))} />
+          )}
+        </div>
       </div>
     </main>
+  )
+}
+
+/** Browser-style tab strip pinned to the top of the page. */
+function TabBar<T extends string>({
+  tabs,
+  active,
+  onChange,
+}: {
+  tabs: { id: T; label: string; count?: number }[]
+  active: T
+  onChange: (id: T) => void
+}) {
+  // Left/right arrows move between tabs, as in a native tab list.
+  const onKeyDown = (e: KeyboardEvent, index: number) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+    const next = tabs[(index + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]
+    onChange(next.id)
+    document.getElementById(`tab-${next.id}`)?.focus()
+  }
+
+  return (
+    <div
+      role="tablist"
+      aria-label="Evaluation sections"
+      className="sticky top-0 z-10 flex items-end gap-0.5 overflow-x-auto bg-neutral-300/70 px-3 pt-2"
+    >
+      {tabs.map((t, i) => {
+        const selected = t.id === active
+        return (
+          <button
+            key={t.id}
+            id={`tab-${t.id}`}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            aria-controls={`tabpanel-${t.id}`}
+            tabIndex={selected ? 0 : -1}
+            onClick={() => onChange(t.id)}
+            onKeyDown={(e) => onKeyDown(e, i)}
+            className={`relative flex min-w-36 shrink-0 items-center gap-2 rounded-t-lg px-4 py-2 text-xs whitespace-nowrap transition-colors ${
+              selected
+                ? 'bg-neutral-100 font-medium text-neutral-900'
+                : 'text-neutral-600 hover:bg-neutral-200/80 hover:text-neutral-900'
+            }`}
+          >
+            {selected && <span className="absolute inset-x-3 top-0 h-0.5 rounded-b bg-[#e0791a]" aria-hidden="true" />}
+            {t.label}
+            {!!t.count && (
+              <span
+                className={`rounded-full px-1.5 text-[10px] font-medium ${
+                  selected ? 'bg-[#e0791a] text-white' : 'bg-neutral-400/60 text-neutral-800'
+                }`}
+              >
+                {t.count}
+              </span>
+            )}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
@@ -150,7 +232,15 @@ function StatCard({
   )
 }
 
-function UpcomingCard({ items, onConfirm }: { items: UpcomingEvaluation[]; onConfirm: (id: number) => void }) {
+function UpcomingCard({
+  items,
+  onConfirm,
+  onOpenReport,
+}: {
+  items: UpcomingEvaluation[]
+  onConfirm: (id: number) => void
+  onOpenReport: (id: number) => void
+}) {
   const [sort, setSort] = useState<'date' | 'type'>('date')
   const sorted = useMemo(
     () =>
@@ -192,7 +282,12 @@ function UpcomingCard({ items, onConfirm }: { items: UpcomingEvaluation[]; onCon
 
       <ul className="mt-3 space-y-2">
         {sorted.map((item) => (
-          <UpcomingRow key={item.id} item={item} onConfirm={() => onConfirm(item.id)} />
+          <UpcomingRow
+            key={item.id}
+            item={item}
+            onConfirm={() => onConfirm(item.id)}
+            onOpenReport={() => onOpenReport(item.id)}
+          />
         ))}
         {sorted.length === 0 && <li className="py-6 text-center text-[11px] text-neutral-500">Nothing scheduled.</li>}
       </ul>
@@ -200,7 +295,15 @@ function UpcomingCard({ items, onConfirm }: { items: UpcomingEvaluation[]; onCon
   )
 }
 
-function UpcomingRow({ item, onConfirm }: { item: UpcomingEvaluation; onConfirm: () => void }) {
+function UpcomingRow({
+  item,
+  onConfirm,
+  onOpenReport,
+}: {
+  item: UpcomingEvaluation
+  onConfirm: () => void
+  onOpenReport: () => void
+}) {
   const observed = item.kind === 'Being observed'
   const title = observed ? `Observed by ${item.otherProfessor}` : `Observing ${item.otherProfessor}`
   const courseNumber = item.course.split(' ').slice(0, 2).join(' ')
@@ -247,9 +350,15 @@ function UpcomingRow({ item, onConfirm }: { item: UpcomingEvaluation; onConfirm:
           </>
         ) : (
           <>
-            <button type="button" className={secondary}>
-              {observed ? 'View rubric' : 'Evaluation form'}
-            </button>
+            {observed ? (
+              <button type="button" className={secondary}>
+                View rubric
+              </button>
+            ) : (
+              <button type="button" onClick={onOpenReport} className={secondary}>
+                Evaluation form
+              </button>
+            )}
             {!item.reportDue && (
               <button type="button" className={secondary}>
                 Reschedule
@@ -323,13 +432,9 @@ function HistoryCard() {
 }
 
 type AvailableSort = 'level' | 'available'
-type RequestAnswer = 'accepted' | 'declined'
 
-function ObserverMatchingCard() {
+function ObserverMatchingCard({ requested, onRequest }: { requested: Set<number>; onRequest: (id: number) => void }) {
   const [availableSort, setAvailableSort] = useState<AvailableSort>('available')
-  const [showAll, setShowAll] = useState(false)
-  const [requested, setRequested] = useState<Set<number>>(() => new Set())
-  const [answers, setAnswers] = useState<Record<number, RequestAnswer>>({})
 
   const available = useMemo(
     () =>
@@ -340,19 +445,17 @@ function ObserverMatchingCard() {
       ),
     [availableSort],
   )
-  const shown = showAll ? available : available.slice(0, 3)
-  const requests = [...OBSERVER_REQUESTS].sort((a, b) => a.due.localeCompare(b.due))
 
   return (
-    <section className="rounded-lg border border-neutral-200 bg-white p-4">
-      <h2 className="text-sm font-semibold text-neutral-900">Observer Matching</h2>
-      <p className="mt-0.5 text-[10px] text-neutral-500">
-        Request an observer for your evaluation, or respond to colleagues who requested you
-      </p>
-
-      <div className="mt-4 flex items-baseline justify-between gap-2">
-        <h3 className="text-[11px] font-semibold text-neutral-900">Available to observe you</h3>
-        <label className="flex items-center gap-1 text-[9px] text-neutral-500">
+    <section className="min-w-0 rounded-lg border border-neutral-200 bg-white p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-neutral-900">Observer Matching</h2>
+          <p className="mt-0.5 text-[10px] text-neutral-500">
+            Observers above your level ({MY_LEVEL}s) who can observe you · request one as your observer
+          </p>
+        </div>
+        <label className="flex shrink-0 items-center gap-1 text-[11px] text-neutral-500">
           Sort:
           <select
             value={availableSort}
@@ -364,10 +467,9 @@ function ObserverMatchingCard() {
           </select>
         </label>
       </div>
-      <p className="text-[9px] text-neutral-500">Above your level ({MY_LEVEL}s) · request one as your observer</p>
 
-      <ul className="mt-2 space-y-2">
-        {shown.map((o) => {
+      <ul className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        {available.map((o) => {
           const sent = requested.has(o.id)
           return (
             <li key={o.id} className="rounded-md bg-neutral-50 p-2.5">
@@ -377,7 +479,7 @@ function ObserverMatchingCard() {
                 <button
                   type="button"
                   disabled={sent}
-                  onClick={() => setRequested((prev) => new Set(prev).add(o.id))}
+                  onClick={() => onRequest(o.id)}
                   className={`${secondary} disabled:text-neutral-400 disabled:hover:bg-white`}
                 >
                   {sent ? 'Requested' : 'Request'}
@@ -387,16 +489,32 @@ function ObserverMatchingCard() {
           )
         })}
       </ul>
+    </section>
+  )
+}
 
-      <div className="mt-4 flex items-baseline justify-between gap-2">
-        <h3 className="text-[11px] font-semibold text-neutral-900">Requested you as observer</h3>
-        <span className="text-[9px] text-neutral-500">
+function ObservationRequestsCard({
+  answers,
+  onAnswer,
+}: {
+  answers: Record<number, RequestAnswer>
+  onAnswer: (id: number, answer: RequestAnswer) => void
+}) {
+  const requests = [...OBSERVER_REQUESTS].sort((a, b) => a.due.localeCompare(b.due))
+
+  return (
+    <section className="min-w-0 rounded-lg border border-neutral-200 bg-white p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-neutral-900">Observation Requests</h2>
+          <p className="mt-0.5 text-[10px] text-neutral-500">Colleagues below your level who asked you to observe them</p>
+        </div>
+        <span className="shrink-0 text-[11px] text-neutral-500">
           Sort: <span className="text-neutral-900">Due date</span>
         </span>
       </div>
-      <p className="text-[9px] text-neutral-500">Below your level · they asked you to observe them</p>
 
-      <ul className="mt-2 space-y-2">
+      <ul className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
         {requests.map((r) => {
           const answer = answers[r.id]
           const overdue = r.due < TEACHER_TODAY
@@ -416,18 +534,10 @@ function ObserverMatchingCard() {
                   </span>
                 ) : (
                   <div className="flex gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setAnswers((prev) => ({ ...prev, [r.id]: 'declined' }))}
-                      className={secondary}
-                    >
+                    <button type="button" onClick={() => onAnswer(r.id, 'declined')} className={secondary}>
                       Decline
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setAnswers((prev) => ({ ...prev, [r.id]: 'accepted' }))}
-                      className={primary}
-                    >
+                    <button type="button" onClick={() => onAnswer(r.id, 'accepted')} className={primary}>
                       Accept
                     </button>
                   </div>
@@ -436,13 +546,8 @@ function ObserverMatchingCard() {
             </li>
           )
         })}
+        {requests.length === 0 && <li className="py-6 text-center text-[11px] text-neutral-500">No requests right now.</li>}
       </ul>
-
-      {AVAILABLE_OBSERVERS.length > 3 && (
-        <button type="button" onClick={() => setShowAll((v) => !v)} className="mt-3 text-[10px] text-[#e0791a] hover:underline">
-          {showAll ? 'Show fewer observers ↑' : `See all ${AVAILABLE_OBSERVERS.length} available observers →`}
-        </button>
-      )}
     </section>
   )
 }
