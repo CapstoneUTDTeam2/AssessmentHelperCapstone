@@ -1,6 +1,6 @@
 # Assessment Helper backend (`app/`)
 
-FastAPI backend for faculty evaluation: health checks, evaluation-cycle status, current-semester observee classes, and documented observer-request endpoints.
+FastAPI backend for faculty evaluation: health checks, evaluation-cycle status, current-semester observee classes, observer eligibility, and documented observer-request endpoints.
 
 Requests hit `main.py`, which mounts routers from `api/`. Evaluation status is read from the database view, not recalculated in Python.
 
@@ -63,6 +63,18 @@ Due / overdue rules live in `Databasing/ProfEvalStat.sql` (`ProfessorEvaluationS
 - `GET /api/observer-pool` — everyone who signed up this cycle, with department and course levels taught this term. Optional `?cycle_id=`.
 
 Signing up is what puts a professor in the observer pool, so there is no separate pool table to keep in sync. Signups take a table lock while checking the one-course limit, so two requests at the same time cannot both get through.
+
+### Observer eligibility (`AHC-243`)
+
+`POST /api/match-observers` filters the observer pool. An observer is eligible only if they:
+
+- signed up this cycle (in the pool)
+- are not the observee
+- are in the same department
+- teach the same course level this term (first digit of the course code × 1000)
+- are free during that class time (no overlapping `MeetingDays` / `StartTime` / `EndTime`)
+
+Body: `faculty_id`, optional `course_id` or `section_id` (defaults to the observee's signup), optional `requested_day` / `requested_time` (defaults to that section's meeting pattern). Returns up to 5 observers; if more than 5 qualify, 5 are chosen at random. `insufficient` is `true` when nobody qualifies.
 
 ### Evaluation cycle deadline handling (`AHC-223`)
 
@@ -134,6 +146,9 @@ curl http://127.0.0.1:8000/api/observees/1/signup
 curl -X POST http://127.0.0.1:8000/api/signups \
   -H 'Content-Type: application/json' \
   -d '{"professor_id": 5, "section_id": 6, "preferred_times": "Tuesday afternoon"}'
+curl -X POST http://127.0.0.1:8000/api/match-observers \
+  -H 'Content-Type: application/json' \
+  -d '{"faculty_id": 1}'
 ```
 
 Note: the sample cycle's signup deadline is 2026-09-15, so `POST /api/signups` returns the deadline error on the sample data until that date is moved forward, for example:
