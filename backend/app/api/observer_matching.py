@@ -1,7 +1,7 @@
 import random
 from datetime import datetime, time
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import text
 
@@ -101,6 +101,47 @@ SELECT 1
 FROM TeachingAssignment
 WHERE ProfessorID = :professor_id
   AND SectionID = :section_id
+"""
+
+SIGNUP_DETAIL_SQL = """
+SELECT
+    os.signupid,
+    os.observeeprofessorid,
+    os.cycleid,
+    s.sectionid,
+    s.sectionname,
+    s.termid,
+    s.meetingdays,
+    s.starttime,
+    s.endtime,
+    c.courseid,
+    c.coursecode,
+    c.coursename
+FROM ObservationSignup os
+JOIN Sections s ON os.SectionID = s.SectionID
+JOIN Courses c ON s.CourseID = c.CourseID
+WHERE os.SignupID = :signup_id
+"""
+
+CYCLE_SIGNUPS_SQL = """
+SELECT
+    os.signupid,
+    os.observeeprofessorid,
+    os.cycleid,
+    s.sectionid,
+    s.sectionname,
+    s.termid,
+    s.meetingdays,
+    s.starttime,
+    s.endtime,
+    c.courseid,
+    c.coursecode,
+    c.coursename
+FROM ObservationSignup os
+JOIN Sections s ON os.SectionID = s.SectionID
+JOIN Courses c ON s.CourseID = c.CourseID
+WHERE os.CycleID = :cycle_id
+ORDER BY os.signupid
 """
 
 # Pool members in the same department, with every section they teach this term.
@@ -319,46 +360,38 @@ def _pick_observers(eligible):
     return sorted(random.sample(eligible, MAX_MATCHES), key=lambda item: item["name"])
 
 
-# What: eligible observers for an observee's class (AHC-243).
-@router.post("/match-observers")
-def match_observers(request: MatchRequest):
-    # Input: faculty_id, optional course_id/section_id, optional requested_day/time, optional cycle_id
-    # Output: up to 5 observers in the same department, same course level, free at that class time
-    with engine.connect() as conn:
-        cycle = resolve_cycle(conn, request.cycle_id)
-        observee = _require_observee(conn, request.faculty_id)
-        section = _load_target_section(conn, request, cycle)
-        if section["termid"] != cycle["termid"]:
-            raise HTTPException(
-                status_code=400,
-                detail="Section is not in the current evaluation-cycle term",
-            )
-
-        requested_days = request.requested_day or section["meetingdays"]
-        window_start, window_end, point_only = parse_requested_window(
-            request.requested_time,
-            parse_clock(section["starttime"]),
-            parse_clock(section["endtime"]),
+def build_match_result(conn, faculty_id, section, cycle, requested_day=None, requested_time=None, signup_id=None):
+    observee = _require_observee(conn, faculty_id)
+    if section["termid"] != cycle["termid"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Section is not in the current evaluation-cycle term",
         )
-        level = course_level(section["coursecode"])
-        if level is None:
-            raise HTTPException(status_code=400, detail="Course code has no course level")
 
-        rows = conn.execute(
-            text(CANDIDATES_SQL),
-            {
-                "faculty_id": request.faculty_id,
-                "department_id": observee["departmentid"],
-                "term_id": cycle["termid"],
-                "cycle_id": cycle["cycleid"],
-            },
-        ).mappings().all()
+    requested_days = requested_day or section["meetingdays"]
+    window_start, window_end, point_only = parse_requested_window(
+        requested_time,
+        parse_clock(section["starttime"]),
+        parse_clock(section["endtime"]),
+    )
+    level = course_level(section["coursecode"])
+    if level is None:
+        raise HTTPException(status_code=400, detail="Course code has no course level")
+
+    rows = conn.execute(
+        text(CANDIDATES_SQL),
+        {
+            "faculty_id": faculty_id,
+            "department_id": observee["departmentid"],
+            "term_id": cycle["termid"],
+            "cycle_id": cycle["cycleid"],
+        },
+    ).mappings().all()
 
     eligible = _eligible_observers(
         rows, level, requested_days, window_start, window_end, point_only
     )
-    chosen = _pick_observers(eligible)
-    return {
+    payload = {
         "faculty_id": observee["professorid"],
         "faculty_name": observee["professorname"],
         "department_id": observee["departmentid"],
@@ -373,5 +406,89 @@ def match_observers(request: MatchRequest):
         "end_time": _time_str(window_end),
         "eligible_count": len(eligible),
         "insufficient": len(eligible) == 0,
-        "observers": chosen,
+        "observers": _pick_observers(eligible),
     }
+    if signup_id is not None:
+        payload["signup_id"] = signup_id
+    return payload
+
+
+def generate_for_signup(conn, signup, cycle=None):
+    if cycle is None:
+        cycle = resolve_cycle(conn, signup["cycleid"])
+    return build_match_result(
+        conn,
+        signup["observeeprofessorid"],
+        signup,
+        cycle,
+        signup_id=signup["signupid"],
+    )
+
+
+def observers_for_signup_id(signup_id):
+    with engine.connect() as conn:
+        signup = conn.execute(
+            text(SIGNUP_DETAIL_SQL), {"signup_id": signup_id}
+        ).mappings().first()
+        if signup is None:
+            raise HTTPException(status_code=404, detail="Signup not found")
+        return generate_for_signup(conn, signup)
+
+
+def generate_for_cycle(conn, cycle_id=None):
+    cycle = resolve_cycle(conn, cycle_id)
+    signups = conn.execute(
+        text(CYCLE_SIGNUPS_SQL), {"cycle_id": cycle["cycleid"]}
+    ).mappings().all()
+    results = [generate_for_signup(conn, signup, cycle) for signup in signups]
+    return {
+        "cycle_id": cycle["cycleid"],
+        "semester": cycle["semester"],
+        "year": cycle["yearnum"],
+        "signup_count": len(results),
+        "insufficient_count": sum(1 for item in results if item["insufficient"]),
+        "signups": results,
+    }
+
+
+# What: eligible observers for an observee's class (AHC-243).
+@router.post("/match-observers")
+def match_observers(request: MatchRequest):
+    # Input: faculty_id, optional course_id/section_id, optional requested_day/time, optional cycle_id
+    # Output: up to 5 observers in the same department, same course level, free at that class time
+    with engine.connect() as conn:
+        cycle = resolve_cycle(conn, request.cycle_id)
+        section = _load_target_section(conn, request, cycle)
+        return build_match_result(
+            conn,
+            request.faculty_id,
+            section,
+            cycle,
+            requested_day=request.requested_day,
+            requested_time=request.requested_time,
+        )
+
+
+# What: up to 5 eligible observers for one signup (AHC-245).
+@router.get("/signups/{signup_id}/eligible-observers")
+def get_signup_eligible_observers(signup_id: int):
+    # Input: signup_id
+    # Output: that signup's match list (empty if nobody qualifies)
+    with engine.connect() as conn:
+        signup = conn.execute(
+            text(SIGNUP_DETAIL_SQL), {"signup_id": signup_id}
+        ).mappings().first()
+        if signup is None:
+            raise HTTPException(status_code=404, detail="Signup not found")
+        return generate_for_signup(conn, signup)
+
+
+# What: generate up to 5 eligible observers for every signup in the cycle (AHC-245).
+@router.post("/match-observers/signups")
+def generate_observers_for_signups(
+    cycle_id: int | None = Query(default=None, description="Defaults to the current cycle"),
+):
+    # Input: optional cycle_id
+    # Output: each signup with up to 5 eligible observers
+    with engine.connect() as conn:
+        return generate_for_cycle(conn, cycle_id)
