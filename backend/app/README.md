@@ -76,6 +76,15 @@ Signing up is what puts a professor in the observer pool, so there is no separat
 
 Body: `faculty_id`, optional `course_id` or `section_id` (defaults to the observee's signup), optional `requested_day` / `requested_time` (defaults to that section's meeting pattern). Returns up to 5 observers; if more than 5 qualify, 5 are chosen at random. `insufficient` is `true` when nobody qualifies.
 
+### Observer lists per signup (`AHC-245`)
+
+Uses the same eligibility rules, once per `ObservationSignup`:
+
+- `GET /api/signups/{signup_id}/eligible-observers` — up to 5 observers for that signup
+- `POST /api/match-observers/signups` — every signup in the cycle (optional `?cycle_id=`)
+
+`POST /api/signups` and `GET /api/observees/{professor_id}/signup` also include `observers` and `insufficient` so a new signup immediately gets its list.
+
 ### Evaluation cycle deadline handling (`AHC-223`)
 
 The database triggers already reject late signups, observations, and surveys. `api/cycle_deadlines.py` is the API side:
@@ -149,6 +158,8 @@ curl -X POST http://127.0.0.1:8000/api/signups \
 curl -X POST http://127.0.0.1:8000/api/match-observers \
   -H 'Content-Type: application/json' \
   -d '{"faculty_id": 1}'
+curl http://127.0.0.1:8000/api/signups/1/eligible-observers
+curl -X POST http://127.0.0.1:8000/api/match-observers/signups
 ```
 
 Note: the sample cycle's signup deadline is 2026-09-15, so `POST /api/signups` returns the deadline error on the sample data until that date is moved forward, for example:

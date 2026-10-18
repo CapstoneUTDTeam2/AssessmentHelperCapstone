@@ -4,6 +4,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from app.api.cycle_deadlines import campus_now, require_before_deadline, resolve_cycle
+from app.api.observer_matching import observers_for_signup_id
 from app.db import engine
 
 router = APIRouter(prefix="/api", tags=["observee-signup"])
@@ -237,7 +238,13 @@ def create_signup(request: SignupRequest):
     except DBAPIError as error:
         raise HTTPException(status_code=400, detail=_db_error_message(error))
 
-    return {**_signup_payload(created), "in_observer_pool": True}
+    match = observers_for_signup_id(created["signupid"])
+    return {
+        **_signup_payload(created),
+        "in_observer_pool": True,
+        "observers": match["observers"],
+        "insufficient": match["insufficient"],
+    }
 
 
 # What: the observee's signup for the cycle.
@@ -257,7 +264,12 @@ def get_observee_signup(
         ).mappings().all()
     if not rows:
         raise HTTPException(status_code=404, detail="No signup for this cycle")
-    return _signup_payload(rows[0])
+    match = observers_for_signup_id(rows[0]["signupid"])
+    return {
+        **_signup_payload(rows[0]),
+        "observers": match["observers"],
+        "insufficient": match["insufficient"],
+    }
 
 
 # What: observer pool for the cycle (AHC-227).
