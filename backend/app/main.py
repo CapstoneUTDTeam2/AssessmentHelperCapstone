@@ -8,6 +8,7 @@ from app.api.cycle_deadlines import router as cycle_deadlines_router
 from app.api.evaluation_cycle import router as evaluation_cycle_router
 from app.api.observee_classes import router as observee_classes_router
 from app.api.observee_signup import router as observee_signup_router
+from app.api.observer_matching import router as observer_matching_router
 from app.api.observer_requests import router as observer_request_router
 from app.db import engine
 
@@ -27,6 +28,7 @@ app.include_router(observer_request_router)
 app.include_router(evaluation_cycle_router)
 app.include_router(observee_classes_router)
 app.include_router(observee_signup_router)
+app.include_router(observer_matching_router)
 app.include_router(cycle_deadlines_router)
 
 
