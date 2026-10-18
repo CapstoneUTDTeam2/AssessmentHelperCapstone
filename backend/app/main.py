@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from app.api.course_catalog import router as course_catalog_router
 from app.api.cycle_deadlines import router as cycle_deadlines_router
 from app.api.evaluation_cycle import router as evaluation_cycle_router
 from app.api.observee_classes import router as observee_classes_router
@@ -27,6 +28,7 @@ app.add_middleware(
 app.include_router(observer_request_router)
 app.include_router(evaluation_cycle_router)
 app.include_router(observee_classes_router)
+app.include_router(course_catalog_router)
 app.include_router(observee_signup_router)
 app.include_router(observer_matching_router)
 app.include_router(cycle_deadlines_router)

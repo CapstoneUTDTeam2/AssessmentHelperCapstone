@@ -51,6 +51,14 @@ Due / overdue rules live in `Databasing/ProfEvalStat.sql` (`ProfessorEvaluationS
 
 - `GET /api/observees/{professor_id}/classes` — sections that observee teaches this semester
 
+### Course catalog and teaching history (`AHC-354`)
+
+Same tables as current-semester classes. `/classes` is unchanged.
+
+- `GET /api/courses` — every course (code, name, description) plus current-cycle sections and instructors
+- `GET /api/courses/{course_id}` — one course
+- `GET /api/observees/{professor_id}/teaching-history` — that professor's sections grouped by term (seed data is only Fall 2026)
+
 ### Observee signup and observer pool (`AHC-224` + `AHC-226` + `AHC-227`)
 
 `api/observee_signup.py`:
@@ -150,6 +158,9 @@ curl http://127.0.0.1:8000/api/evaluation-status/overdue
 curl 'http://127.0.0.1:8000/api/evaluation-status?status=Due'
 curl http://127.0.0.1:8000/api/evaluation-status/1
 curl http://127.0.0.1:8000/api/observees/1/classes
+curl http://127.0.0.1:8000/api/observees/1/teaching-history
+curl http://127.0.0.1:8000/api/courses
+curl http://127.0.0.1:8000/api/courses/1
 curl http://127.0.0.1:8000/api/observer-pool
 curl http://127.0.0.1:8000/api/observees/1/signup
 curl -X POST http://127.0.0.1:8000/api/signups \
