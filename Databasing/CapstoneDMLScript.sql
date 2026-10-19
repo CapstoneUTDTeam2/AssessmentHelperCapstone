@@ -124,3 +124,16 @@ VALUES
 (2, 4, 2, 4, 'Good pacing.'),
 (2, 5, 2, 5, 'Strong examples.'),
 (2, 6, 2, 5, 'Good student participation.');
+
+INSERT INTO ObserverAvailability
+VALUES (3, 1, 'M', '08:00', '17:00');
+
+INSERT INTO ObserverUnavailableDate
+VALUES (3, 1, '2026-11-09');
+
+INSERT INTO SignupPreferredDate
+    (SignupID, PreferredDate)
+VALUES
+    (1, '2026-11-02'),
+    (1, '2026-11-04'),
+    (1, '2026-11-09');
