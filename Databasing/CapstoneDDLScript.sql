@@ -160,6 +160,74 @@ CREATE TABLE ObserverRequest(
     foreign key (ObserverProfessorID) references Professors(ProfessorID)
 );
 
+ALTER TABLE ObserverRequest
+ADD CONSTRAINT unique_observer_per_signup
+UNIQUE (SignupID, ObserverProfessorID);
+
+CREATE OR REPLACE FUNCTION check_observer_eligibility()
+RETURNS TRIGGER AS $$
+DECLARE
+    observee_id INT;
+    observee_dept INT;
+    observer_dept INT;
+BEGIN
+    SELECT os.ObserveeProfessorID, p.ProfessorDepartment
+    INTO observee_id, observee_dept
+    FROM ObservationSignup os
+    JOIN Professors p
+      ON p.ProfessorID = os.ObserveeProfessorID
+    WHERE os.SignupID = NEW.SignupID;
+
+    SELECT ProfessorDepartment
+    INTO observer_dept
+    FROM Professors
+    WHERE ProfessorID = NEW.ObserverProfessorID;
+
+    IF NEW.ObserverProfessorID = observee_id THEN
+        RAISE EXCEPTION
+            'A professor cannot observe themselves';
+    END IF;
+
+    IF observer_dept IS DISTINCT FROM observee_dept THEN
+        RAISE EXCEPTION
+            'Observer and observee must belong to the same department';
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER validate_observer_eligibility
+BEFORE INSERT OR UPDATE ON ObserverRequest
+FOR EACH ROW
+EXECUTE FUNCTION check_observer_eligibility();
+
+
+CREATE OR REPLACE FUNCTION check_observer_qualification()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM get_eligible_observers(NEW.SignupID) e
+        WHERE e.ProfessorID = NEW.ObserverProfessorID
+    ) THEN
+        RAISE EXCEPTION
+            'Professor % is not eligible for signup %',
+            NEW.ObserverProfessorID,
+            NEW.SignupID;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER validate_observer_qualification
+BEFORE INSERT OR UPDATE
+ON ObserverRequest
+FOR EACH ROW
+EXECUTE FUNCTION check_observer_qualification();
+
+
 CREATE TABLE TeachingAssignment (
     SectionID INT,
     ProfessorID INT,
@@ -167,6 +235,146 @@ CREATE TABLE TeachingAssignment (
     foreign key (SectionID) references Sections(SectionID),
     foreign key (ProfessorID) references Professors(ProfessorID)
 );
+
+
+-- Return every professor eligible to observe a signup.
+CREATE OR REPLACE FUNCTION get_eligible_observers(
+    p_signup_id INT
+)
+RETURNS TABLE (
+    ProfessorID INT,
+    ProfessorName VARCHAR(50)
+)
+LANGUAGE sql
+AS $$
+    WITH ranked_terms AS (
+    SELECT
+        t.TermID,
+        ROW_NUMBER() OVER (
+            ORDER BY
+                t.YearNum DESC,
+                CASE t.Semester
+                    WHEN 'Fall' THEN 2
+                    WHEN 'Spring' THEN 1
+                END DESC
+        ) AS term_rank
+    FROM AcademicTerm t
+    WHERE t.Semester IN ('Fall', 'Spring')
+),
+
+    target AS (
+        SELECT
+            os.ObserveeProfessorID,
+            p.ProfessorDepartment,
+            s.TermID,
+            s.MeetingDays,
+            s.StartTime,
+            s.EndTime,
+
+            -- CS 4485 -> '4'
+            LEFT(
+                SPLIT_PART(c.CourseCode, ' ', 2),
+                1
+            ) AS CourseLevel
+
+        FROM ObservationSignup os
+        JOIN Professors p
+            ON p.ProfessorID = os.ObserveeProfessorID
+        JOIN Sections s
+            ON s.SectionID = os.SectionID
+        JOIN Courses c
+            ON c.CourseID = s.CourseID
+
+        WHERE os.SignupID = p_signup_id
+    )
+
+    SELECT
+        p.ProfessorID,
+        p.ProfessorName
+
+    FROM Professors p
+    CROSS JOIN target t
+
+    WHERE
+        -- Same department
+        p.ProfessorDepartment = t.ProfessorDepartment
+
+        -- Cannot observe yourself
+        AND p.ProfessorID <> t.ObserveeProfessorID
+
+        -- Taught this course level within 4 semesters
+        AND EXISTS (
+            SELECT 1
+            FROM TeachingAssignment ta
+            JOIN Sections s
+                ON s.SectionID = ta.SectionID
+            JOIN Courses c
+                ON c.CourseID = s.CourseID
+            JOIN ranked_terms history_term
+                ON history_term.TermID = s.TermID
+            JOIN ranked_terms current_term
+                ON current_term.TermID = t.TermID
+
+            WHERE ta.ProfessorID = p.ProfessorID
+
+              AND history_term.term_rank BETWEEN
+                  current_term.term_rank
+                  AND current_term.term_rank + 3
+
+              AND LEFT(
+                  SPLIT_PART(c.CourseCode, ' ', 2),
+                  1
+              ) = t.CourseLevel
+        )
+
+        -- No conflicting class during observation
+        AND NOT EXISTS (
+            SELECT 1
+            FROM TeachingAssignment ta
+            JOIN Sections s
+                ON s.SectionID = ta.SectionID
+
+            WHERE ta.ProfessorID = p.ProfessorID
+              AND s.TermID = t.TermID
+
+              -- Times overlap
+              AND s.StartTime < t.EndTime
+              AND s.EndTime > t.StartTime
+
+              -- At least one meeting day overlaps
+              AND EXISTS (
+                  SELECT 1
+                  FROM regexp_split_to_table(
+                      UPPER(COALESCE(s.MeetingDays, '')),
+                      ''
+                  ) AS day_code(day_letter)
+
+                  WHERE POSITION(
+                      day_code.day_letter IN
+                      UPPER(COALESCE(t.MeetingDays, ''))
+                  ) > 0
+              )
+        )
+
+        -- Missing schedule data cannot prove availability
+        AND t.MeetingDays IS NOT NULL
+        AND t.StartTime IS NOT NULL
+        AND t.EndTime IS NOT NULL
+        AND NOT EXISTS (
+            SELECT 1
+            FROM TeachingAssignment ta
+            JOIN Sections s
+                ON s.SectionID = ta.SectionID
+            WHERE ta.ProfessorID = p.ProfessorID
+              AND s.TermID = t.TermID
+              AND (
+                  s.MeetingDays IS NULL
+                  OR s.StartTime IS NULL
+                  OR s.EndTime IS NULL
+              )
+        );
+$$;
+
 
 -- Observee can only sign up for a section they teach
 ALTER TABLE ObservationSignup
