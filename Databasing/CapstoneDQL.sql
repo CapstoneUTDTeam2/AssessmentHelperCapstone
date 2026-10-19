@@ -205,3 +205,34 @@ FROM ObservationSignup os
 JOIN EvaluationCycle ec ON ec.CycleID = os.CycleID
 JOIN Sections s ON s.SectionID = os.SectionID
 WHERE s.TermID <> ec.TermID;
+
+-- Signups with no eligible observers
+SELECT
+    os.SignupID,
+    os.ObserveeProfessorID,
+    COUNT(e.ProfessorID) AS EligibleCount
+FROM ObservationSignup os
+LEFT JOIN LATERAL
+    get_eligible_observers(os.SignupID) e
+    ON TRUE
+GROUP BY
+    os.SignupID,
+    os.ObserveeProfessorID
+HAVING COUNT(e.ProfessorID) = 0;
+
+-- Randomly select up to 5 eligible observers
+SELECT *
+FROM get_eligible_observers(1)
+ORDER BY RANDOM()
+LIMIT 5;
+
+-- Count eligibile observers for every signup
+SELECT
+    os.SignupID,
+    COUNT(e.ProfessorID) AS EligibleCount
+FROM ObservationSignup os
+LEFT JOIN LATERAL
+    get_eligible_observers(os.SignupID) e
+    ON TRUE
+GROUP BY os.SignupID
+ORDER BY os.SignupID;
