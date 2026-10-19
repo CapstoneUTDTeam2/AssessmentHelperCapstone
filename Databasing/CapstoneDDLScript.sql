@@ -223,14 +223,6 @@ BEFORE INSERT OR UPDATE ON ObserverRequest
 FOR EACH ROW
 EXECUTE FUNCTION check_observer_eligibility();
 
-
-CREATE TRIGGER validate_observer_qualification
-BEFORE INSERT OR UPDATE
-ON ObserverRequest
-FOR EACH ROW
-EXECUTE FUNCTION check_observer_qualification();
-
-
 CREATE TABLE TeachingAssignment (
     SectionID INT,
     ProfessorID INT,
@@ -1160,3 +1152,9 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER validate_observer_qualification
+BEFORE INSERT OR UPDATE
+ON ObserverRequest
+FOR EACH ROW
+EXECUTE FUNCTION check_observer_qualification();
