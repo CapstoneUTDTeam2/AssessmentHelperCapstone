@@ -236,3 +236,163 @@ LEFT JOIN LATERAL
     ON TRUE
 GROUP BY os.SignupID
 ORDER BY os.SignupID;
+
+-- Eval cycle Info Query
+SELECT
+    ec.CycleID,
+    ec.TermID,
+    t.Semester,
+    t.YearNum,
+    ec.SignUpDeadLine,
+    ec.ObservationDeadLine,
+    ec.PostObservationFeedbackDeadLine,
+    ec.AppFeedbackDeadLine
+FROM EvaluationCycle ec
+JOIN AcademicTerm t
+    ON t.TermID = ec.TermID
+WHERE ec.CycleID = 1;
+
+-- Course overview for the selected term
+SELECT *
+FROM CourseOverview
+WHERE TermID = 1
+ORDER BY CourseCode;
+
+-- Problematic signups (0 eligible observers)
+SELECT *
+FROM SignupObserverCoverage
+WHERE EligibleCount = 0;
+
+-- filtering by cycle
+SELECT *
+FROM SignupObserverCoverage
+WHERE CycleID = 1;
+
+-- Current Pending Observations
+SELECT *
+FROM ProfessorObserverInvitations
+WHERE ObserverProfessorID = 3
+  AND RequestStatus = 'Pending'
+ORDER BY RequestDate DESC;
+
+--Upcoming Observations
+SELECT *
+FROM ProfessorObservationDashboard
+WHERE ObserveeID = 3
+  AND ScheduledDate >= CURRENT_DATE
+  AND ObservationStatus <> 'Completed'
+ORDER BY ScheduledDate, ScheduledTime;
+
+--Completed Observations
+SELECT *
+FROM ProfessorObservationDashboard
+WHERE ObserveeID = 3
+  AND ObservationStatus = 'Completed'
+ORDER BY CompletedDate DESC;
+
+-- Course Schedule for Profs
+SELECT *
+FROM ProfessorCourseSchedule
+WHERE ProfessorID = 3
+ORDER BY YearNum DESC, Semester, CourseCode;
+
+-- CourseSectionDetailing
+SELECT *
+FROM CourseSectionDetails
+WHERE CourseID = 3
+  AND TermID = 1
+ORDER BY SectionName, ProfessorName;
+
+--Example Query for Professor's history
+SELECT *
+FROM CourseInstructorHistory
+WHERE CourseID = 3
+ORDER BY
+    YearNum DESC,
+    CASE Semester
+        WHEN 'Fall' THEN 3
+        WHEN 'Summer' THEN 2
+        WHEN 'Spring' THEN 1
+    END DESC;
+
+-- Observer workloads for evaluation cycle 1
+SELECT *
+FROM ObserverWorkload
+WHERE CycleID = 1
+ORDER BY AssignedObservations DESC;
+
+-- KPI Completion Stats
+-- Observation status totals for a cycle
+SELECT
+    o.Status,
+    COUNT(*) AS ObservationCount
+FROM Observation o
+JOIN ObservationSignup os
+    ON os.SignupID = o.SignupID
+WHERE os.CycleID = 1
+GROUP BY o.Status
+ORDER BY ObservationCount DESC;
+
+--Faculty count by acadmic level
+SELECT
+    CurrentLevel,
+    COUNT(*) AS FacultyCount
+FROM Professors
+GROUP BY CurrentLevel
+ORDER BY CurrentLevel;
+
+--Faculty Due by academic level
+SELECT
+    CurrentLevel,
+    COUNT(*) AS FacultyDue
+FROM FacultyEvaluationDue
+WHERE CycleID = 1
+  AND IsDue = TRUE
+GROUP BY CurrentLevel
+ORDER BY CurrentLevel;
+
+--Specific professors due
+SELECT
+    ProfessorID,
+    ProfessorName,
+    CurrentLevel,
+    LastEvaluationYear,
+    RequiredIntervalYears
+FROM FacultyEvaluationDue
+WHERE CycleID = 1
+  AND IsDue = TRUE
+ORDER BY CurrentLevel, ProfessorName;
+
+--Faculty who have never completed an observation
+SELECT
+    ProfessorID,
+    ProfessorName,
+    CurrentLevel
+FROM FacultyEvaluationDue
+WHERE CycleID = 1
+  AND LastEvaluationYear IS NULL
+  AND IsDue = TRUE;
+
+--All professors enrolled to observe in Cycle 1
+SELECT
+    p.ProfessorID,
+    p.ProfessorName,
+    oe.EnrollmentDate,
+    oe.Status
+FROM ObserverEnrollment oe
+JOIN Professors p
+    ON p.ProfessorID = oe.ProfessorID
+WHERE oe.CycleID = 1
+ORDER BY p.ProfessorName;
+
+--Observers who havent entered any weekday availibility
+SELECT
+    p.ProfessorID,
+    p.ProfessorName,
+    oe.EnrollmentDate,
+    oe.Status
+FROM ObserverEnrollment oe
+JOIN Professors p
+    ON p.ProfessorID = oe.ProfessorID
+WHERE oe.CycleID = 1
+ORDER BY p.ProfessorName;

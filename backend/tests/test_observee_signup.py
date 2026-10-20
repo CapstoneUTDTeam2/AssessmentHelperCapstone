@@ -19,7 +19,7 @@ def _pool_ids(client, cycle_id=None):
 def test_signup_creates_pending_signup(client):
     response = client.post(
         "/api/signups",
-        json={"professor_id": 5, "section_id": 6, "preferred_times": "Tuesday afternoon"},
+        json={"professor_id": 5, "section_id": 6},
     )
     assert response.status_code == 201
     body = response.json()
@@ -111,8 +111,9 @@ def test_get_observee_signup_none_yet(client):
     assert response.status_code == 404
 
 
-def test_observer_pool_lists_signed_up_professors(client):
-    assert sorted(_pool_ids(client)) == [1, 2, 3, 4]
+def test_observer_pool_lists_signed_up_and_enrolled_professors(client):
+    # 1 to 4 signed up; 7 (Grace) is enrolled as an observer without signing up.
+    assert sorted(_pool_ids(client)) == [1, 2, 3, 4, 7]
 
 
 def test_signup_adds_professor_to_observer_pool(client):

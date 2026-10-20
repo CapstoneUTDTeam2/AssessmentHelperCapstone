@@ -245,3 +245,16 @@ FROM ObservationSignup os
 JOIN EvaluationCycle ec ON ec.CycleID = os.CycleID
 JOIN Sections s ON s.SectionID = os.SectionID
 WHERE s.TermID <> ec.TermID;
+
+--Test for complted reports and template locks
+SELECT
+    o.ObservationID,
+    o.Status,
+    o.CompletedDate,
+    ot.TemplateID,
+    ot.TemplateVersion,
+    ot.IsLocked
+FROM Observation o
+JOIN ObservationTemplate ot
+    ON ot.TemplateID = o.TemplateID
+WHERE o.Status = 'Completed';
