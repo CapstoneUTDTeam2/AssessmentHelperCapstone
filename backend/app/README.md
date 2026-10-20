@@ -63,14 +63,14 @@ Same tables as current-semester classes. `/classes` is unchanged.
 
 `api/observee_signup.py`:
 
-- `POST /api/signups` — observee signs up for one section they teach. Body: `professor_id`, `section_id`, optional `preferred_times`, optional `cycle_id` (defaults to the current cycle). Returns `201` with the new `Pending` signup.
+- `POST /api/signups` — observee signs up for one section they teach. Body: `professor_id`, `section_id`, optional `preferred_dates` (list of `YYYY-MM-DD`), optional `cycle_id` (defaults to the current cycle). Returns `201` with the new `Pending` signup.
   - `404` unknown professor, section, or cycle
-  - `400` section not in the cycle's term, professor does not teach the section, or the signup deadline has passed
+  - `400` section not in the cycle's term, professor does not teach the section, the signup deadline has passed, or a preferred date is in the past, after the observation deadline, or not a day the class meets
   - `409` observee already has a signup this cycle (one course per cycle, `MAX_SIGNUPS_PER_CYCLE = 1`)
 - `GET /api/observees/{professor_id}/signup` — that observee's signup for the current cycle (`404` if none). Optional `?cycle_id=`.
-- `GET /api/observer-pool` — everyone who signed up this cycle, with department and course levels taught this term. Optional `?cycle_id=`.
+- `GET /api/observer-pool` — everyone who signed up or is an active `ObserverEnrollment` this cycle, with department and course levels taught this term. Optional `?cycle_id=`.
 
-Signing up is what puts a professor in the observer pool, so there is no separate pool table to keep in sync. Signups take a table lock while checking the one-course limit, so two requests at the same time cannot both get through.
+Signing up also adds an `ObserverEnrollment` row, so signing up puts a professor in the observer pool. Preferred dates go in `SignupPreferredDate`. Signups take a table lock while checking the one-course limit, so two requests at the same time cannot both get through.
 
 ### Observer eligibility (`AHC-243`)
 
@@ -92,6 +92,18 @@ Uses the same eligibility rules, once per `ObservationSignup`:
 - `POST /api/match-observers/signups` — every signup in the cycle (optional `?cycle_id=`)
 
 `POST /api/signups` and `GET /api/observees/{professor_id}/signup` also include `observers` and `insufficient` so a new signup immediately gets its list.
+
+### Observer selection (`AHC-247` + `AHC-246` + `AHC-248`)
+
+`api/observer_selection.py`. Eligibility comes from the database function `get_eligible_observers`, the same check `ObserverRequest` uses, so anyone on a list can be sent a request.
+
+- `POST /api/observer-selection/start` — committee starts selection (`400` before the signup deadline passes). For each `Pending` / `Matched` / `Unmatched` signup it picks up to 5 observers (random if more qualify), saves them in `SignupObserverList`, and sets status to `Matched` or `Unmatched`. Signups already `List Ready` or `Accepted` keep their list. Optional `?cycle_id=`.
+- `GET /api/observer-selection/alerts` — signups with no eligible observers (`level: none`) or fewer than 5 (`level: low`). Optional `?cycle_id=`.
+- `GET /api/signups/{signup_id}/observer-list` — the saved list for one signup
+- `POST /api/observer-selection/notify` — committee sends the lists: `Matched` signups become `List Ready`. Optional `?cycle_id=`, `?signup_id=` for one signup.
+- `GET /api/observees/{professor_id}/notifications` — the observee's "observer list is ready" notification with their saved list. Optional `?cycle_id=`.
+
+The list is saved once, so the committee, the notification, and `GET /api/observees/{professor_id}/signup` all show the same names.
 
 ### Evaluation cycle deadline handling (`AHC-223`)
 
@@ -165,12 +177,17 @@ curl http://127.0.0.1:8000/api/observer-pool
 curl http://127.0.0.1:8000/api/observees/1/signup
 curl -X POST http://127.0.0.1:8000/api/signups \
   -H 'Content-Type: application/json' \
-  -d '{"professor_id": 5, "section_id": 6, "preferred_times": "Tuesday afternoon"}'
+  -d '{"professor_id": 5, "section_id": 6, "preferred_dates": ["2026-11-03"]}'
 curl -X POST http://127.0.0.1:8000/api/match-observers \
   -H 'Content-Type: application/json' \
   -d '{"faculty_id": 1}'
 curl http://127.0.0.1:8000/api/signups/1/eligible-observers
 curl -X POST http://127.0.0.1:8000/api/match-observers/signups
+curl http://127.0.0.1:8000/api/observer-selection/alerts
+curl -X POST http://127.0.0.1:8000/api/observer-selection/start
+curl http://127.0.0.1:8000/api/signups/3/observer-list
+curl -X POST http://127.0.0.1:8000/api/observer-selection/notify
+curl http://127.0.0.1:8000/api/observees/3/notifications
 ```
 
 Note: the sample cycle's signup deadline is 2026-09-15, so `POST /api/signups` returns the deadline error on the sample data until that date is moved forward, for example:
