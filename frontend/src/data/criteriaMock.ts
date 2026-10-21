@@ -56,12 +56,10 @@ function criterion(
 }
 
 export const CRITERIA: Criterion[] = [
-  criterion(1, 'setup', 'Canvas course shell prepared according to college guidelines testing', 'Online / Hybrid', 36, '', [
+  criterion(1, 'setup', 'Updated syllabus in CourseBook', 'All', 36, '', [
     'Clear expectations about communication, interaction, and participation',
   ]),
   criterion(2, 'setup', 'Intentional and organized lecture for the day', 'Online / Hybrid', 36),
-  criterion(3, 'setup', 'Course welcome and introductions', 'All', 41),
-  criterion(4, 'setup', 'Contact information and methods of contact', 'All', 41),
   criterion(5, 'engagement', 'Regular and active engagement with students', 'All', 41),
   criterion(6, 'engagement', 'Opportunities for interaction and collaboration throughout the observed lecture', 'All', 41),
   criterion(
