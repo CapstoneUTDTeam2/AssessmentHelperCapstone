@@ -2,7 +2,7 @@
 // faculty account. Swap these for API responses once the backend is wired up.
 
 /** Fixed "today" so the mock schedule lines up with the design. */
-export const TEACHER_TODAY = '2026-09-16'
+export const TEACHER_TODAY = '2026-10-20'
 
 export const TEACHER_PROFILE = {
   name: 'Professor A',
@@ -39,7 +39,7 @@ export const UPCOMING: UpcomingEvaluation[] = [
   { id: 1, date: '2026-09-16', kind: 'Being observed', otherProfessor: 'Professor I', course: 'CS 3345 Data Structures', section: '001', start: '10:00', end: '11:15', room: 'ECSS 2.410', confirmed: true },
   { id: 2, date: '2026-09-24', kind: 'Observing', otherProfessor: 'Professor C', course: 'CS 2305 Discrete Math', section: '002', start: '10:00', end: '11:15', room: 'ECSS 2.311', confirmed: true },
   { id: 3, date: '2026-10-14', kind: 'Observing', otherProfessor: 'Professor H', course: 'CS 1336 Programming Fundamentals', section: '002', start: '09:00', end: '09:50', room: 'ECSS 2.415', confirmed: true, reportDue: '2026-10-21' },
-  { id: 4, date: '2026-10-14', kind: 'Being observed', otherProfessor: 'Professor F', course: 'CS 4348 Operating Systems', section: '001', start: '14:30', end: '15:45', room: 'ECSS 2.306', confirmed: false },
+  { id: 4, date: '2026-10-28', kind: 'Being observed', otherProfessor: 'Professor F', course: 'CS 4348 Operating Systems', section: '001', start: '14:30', end: '15:45', room: 'ECSS 2.306', confirmed: false },
 ]
 
 export type Weekday = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri'
@@ -142,7 +142,33 @@ export const EVALUATION_HISTORY: PastEvaluation[] = [
 ]
 
 /** Formal evaluations this faculty member must receive in the current cycle. */
-export const EVALUATION_REQUIREMENT = { received: 1, required: 2, nextDue: 'Mar 2027', cycle: '2-year cycle' }
+export const EVALUATION_REQUIREMENT = {
+  received: 1,
+  required: 2,
+  nextDue: 'Mar 2027',
+  /** ISO year-month of the next formal evaluation. */
+  nextDueMonth: '2027-03',
+  cycle: '2-year cycle',
+}
+
+export interface OpenSignup {
+  id: number
+  name: string
+  email: string
+  course: string
+  section: string
+  days: string
+  /** "HH:MM" 24-hour. */
+  start: string
+  end: string
+}
+
+/** Colleagues signed up to be observed this cycle who still need an observer. */
+export const OPEN_SIGNUPS: OpenSignup[] = [
+  { id: 1, name: 'Professor B', email: 'profb@example.edu', course: 'CS 4337', section: '001', days: 'Mon / Wed', start: '13:00', end: '14:15' },
+  { id: 2, name: 'Professor D', email: 'profd@example.edu', course: 'CS 3341', section: '002', days: 'Tue / Thu', start: '11:30', end: '12:45' },
+  { id: 3, name: 'Professor E', email: 'profe@example.edu', course: 'CS 2336', section: '501', days: 'Fri', start: '09:00', end: '11:45' },
+]
 
 export type HistoryType = 'Observing' | 'Observed' | 'Evaluation'
 
