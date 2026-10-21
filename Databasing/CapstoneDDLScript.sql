@@ -938,6 +938,22 @@ CREATE TABLE SignupPreferredDate (
         ON DELETE CASCADE
 );
 
+-- Observer list saved when the AC starts observer selection, so everyone sees the same names
+CREATE TABLE SignupObserverList (
+    SignupID INT NOT NULL,
+    ObserverProfessorID INT NOT NULL,
+    SavedDate DATE NOT NULL DEFAULT CURRENT_DATE,
+
+    PRIMARY KEY (SignupID, ObserverProfessorID),
+
+    FOREIGN KEY (SignupID)
+        REFERENCES ObservationSignup(SignupID)
+        ON DELETE CASCADE,
+
+    FOREIGN KEY (ObserverProfessorID)
+        REFERENCES Professors(ProfessorID)
+);
+
 --For each potential observer:
 -- 1. Same department, not the observee.
 -- 2. Taught the same course level within four Fall/Spring semesters.
