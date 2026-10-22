@@ -9,6 +9,8 @@ This document lists the data the frontend reads from, or sends to, the backend a
 
 A data row is ✓ only when every one of its fields is ✓. Items marked ✗ that need a database change are listed under [To Fix](#to-fix).
 
+Rows marked ✓ that the backend has no working route for yet are listed under [Missing Backend Routes](#missing-backend-routes).
+
 ---
 
 ## 1. Auth and current user
@@ -702,3 +704,64 @@ Places where the frontend requirements above and the current database (`Databasi
 - **Frontend:** every `Criterion` has a `sectionId`.
 - **Database:** `EvaluationCriterion.SectionID` is nullable, and the seed criteria have no section.
 - **Needed:** give the seed criteria sections, then make `SectionID` `NOT NULL`.
+
+---
+
+## Missing Backend Routes
+
+Data rows marked ✓ above that the database supports but the backend (`backend/app/api/`) has no working route for. The frontend can't load or save them until these routes exist.
+
+### Observer enrollment (5.1)
+- **Frontend:** `Observer enrollment` (write) and `My observer enrollment` (read).
+- **Backend:** no route reads or writes `ObserverEnrollment`.
+- **Needed:** a route to enroll or withdraw an observer for a cycle, and one to read the observer's enrollment.
+
+### Observer availability (5.2)
+- **Frontend:** `Observer availability` (write): `weeklyTimes` and `unavailableDates`.
+- **Backend:** no route writes `ObserverAvailability` or `ObserverUnavailableDate`.
+- **Needed:** a route that replaces the observer's availability rows for a cycle.
+
+### Request observer (6.2)
+- **Frontend:** `Request observer` (`signupId`, `observerId`).
+- **Backend:** `POST /api/observer-requests` is declared in `observer_requests.py`, but its body is `...`, so it creates nothing and returns `null`.
+- **Needed:** an implementation that inserts a `Pending` `ObserverRequest`.
+
+### Incoming observation requests (6.3)
+- **Frontend:** `Incoming observation request` (read).
+- **Backend:** `GET /api/observer-requests` and `GET /api/observer-requests/accepted` are declared but empty, so they return `null`.
+- **Needed:** an implementation that reads `ProfessorObserverInvitations` for the observer, with the sign-up's preferred dates.
+
+### Answer request (6.3)
+- **Frontend:** `Answer request` (`requestId`, `status`).
+- **Backend:** no route updates `ObserverRequest.Status`. (`POST /api/signups/{signup_id}/select-observer` is declared but empty, and it is for the observee choosing an observer, not the observer answering.)
+- **Needed:** a route that sets a request to `Accepted` or `Declined`.
+
+### Schedule evaluation (7.1)
+- **Frontend:** `Schedule evaluation` (`signupId`, `observerId`, `date`, `start`).
+- **Backend:** no route creates an `Observation`.
+- **Needed:** a route that inserts the `Observation`, taking the observee from the sign-up and the template from the cycle.
+
+### Faculty detail events and matches (3)
+- **Frontend:** `Faculty detail.pastEvents`, `upcomingEvents`, `theyCanObserve`, and the `EvaluationEvent` and `ObserverMatch (faculty detail)` rows.
+- **Backend:** no route returns a professor's observations (as observer or observee) or the professors they can observe. `GET /api/signups/{signup_id}/eligible-observers` goes the other way: the observers for one sign-up.
+- **Needed:** a route for a professor's observation history and upcoming observations, and one for the observees they are eligible to observe.
+
+### Course history (4)
+- **Frontend:** `Course.history` (`CourseHistoryEntry`: term, year, instructor, sections).
+- **Backend:** `GET /api/courses` and `GET /api/courses/{course_id}` only return the current term's sections.
+- **Needed:** a route (or a field on `GET /api/courses/{course_id}`) with the course's past terms, instructors and section counts.
+
+### Report PDF (8)
+- **Frontend:** `Report PDF` (report ids or a professor id).
+- **Backend:** no report routes at all.
+- **Needed:** a route that builds and returns the PDF.
+
+### Evaluation criteria (9)
+- **Frontend:** `Criteria section`, `Criterion` and `Observation template`.
+- **Backend:** no route reads or writes `EvaluationCriterionSection`, `EvaluationCriterion` or `ObservationTemplate`.
+- **Needed:** routes to list and edit a template's sections and criteria, and to read the template (version, active, locked, counts).
+
+### Dashboard and Evaluations statistics (10)
+- **Frontend:** `Observer utilization`, `Avg. observations per observer`, `Cycle completion`, `Observer workload bucket`, `Export report`, and `Cycle summary.unmatched` / `totalEvaluations`.
+- **Backend:** no statistics routes. (`Faculty due by hire level` and `Cycle summary.facultyDue` / `overdue` can be counted from `GET /api/evaluation-status`.)
+- **Needed:** routes that return these counts for a cycle, and one that exports the cycle report.

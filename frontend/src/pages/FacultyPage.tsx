@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
+import { ApiError } from '../api/client'
 import { getFaculty } from '../api/faculty'
+import type { SignupWithObservers } from '../api/signups'
 import type { CurrentTerm } from '../api/evaluationStatus'
 import { LEVEL_COLORS } from '../theme'
 import type {
@@ -10,6 +12,7 @@ import type {
   ObserverMatch,
   StatusTone,
 } from '../data/facultyMock'
+import { useObserverMatching } from '../hooks/useObserverMatching'
 
 const STATUS_PILLS: Record<StatusTone, string> = {
   due: 'bg-[#e0791a]',
@@ -345,7 +348,7 @@ function FacultyPage() {
                   {isOpen && (
                     <tr className="border-t border-neutral-100 bg-neutral-50">
                       <td colSpan={COLUMNS.length + 2} className="px-10 py-4">
-                        <FacultyDetailsPanel member={member} />
+                        <FacultyDetailsPanel member={member} faculty={faculty} />
                       </td>
                     </tr>
                   )}
@@ -373,8 +376,45 @@ function FacultyPage() {
   )
 }
 
-function FacultyDetailsPanel({ member }: { member: FacultyMember }) {
+type ObserverLoad =
+  | { kind: 'loading' }
+  | { kind: 'ready'; observers: ObserverMatch[] }
+  | { kind: 'not-signed-up' }
+  | { kind: 'error'; message: string }
+
+/** "CS 4347" -> "4000s", the same course-level grouping the matching backend uses. */
+function courseLevelLabel(courseCode: string) {
+  const digit = courseCode.match(/\d/)?.[0]
+  return digit ? `${digit}000s` : '—'
+}
+
+function toObserverMatches(signup: SignupWithObservers, faculty: FacultyMember[]): ObserverMatch[] {
+  return signup.observers.map((o) => ({
+    name: o.name,
+    rank: faculty.find((f) => f.id === o.observer_id)?.level ?? '—',
+    detail: `${o.department} · ${signup.course_code}`,
+    courseLevel: courseLevelLabel(signup.course_code),
+  }))
+}
+
+function FacultyDetailsPanel({ member, faculty }: { member: FacultyMember; faculty: FacultyMember[] }) {
   const { details } = member
+  const { fetchObserveeSignup } = useObserverMatching()
+  const [observers, setObservers] = useState<ObserverLoad>({ kind: 'loading' })
+
+  // Observers who can observe this member come from their be-observed sign-up this cycle.
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchObserveeSignup(member.id, controller.signal)
+      .then((signup) => setObservers({ kind: 'ready', observers: toObserverMatches(signup, faculty) }))
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return
+        if (err instanceof ApiError && err.status === 404) setObservers({ kind: 'not-signed-up' })
+        else setObservers({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to load observers' })
+      })
+    return () => controller.abort()
+  }, [member.id, faculty, fetchObserveeSignup])
+
   return (
     <div className="grid gap-3 lg:grid-cols-[1.25fr_0.85fr_1fr]">
       <section className="rounded-lg border border-neutral-200 bg-white p-3">
@@ -410,7 +450,19 @@ function FacultyDetailsPanel({ member }: { member: FacultyMember }) {
             Sort: <span className="text-neutral-800">Level</span>
           </span>
         </div>
-        <ObserverList title={`Can observe ${member.name}`} observers={details.canObserveThem} />
+        <ObserverList
+          title={`Can observe ${member.name}`}
+          observers={observers.kind === 'ready' ? observers.observers : []}
+          emptyText={
+            observers.kind === 'loading'
+              ? 'Loading…'
+              : observers.kind === 'not-signed-up'
+                ? 'Not signed up to be observed this cycle'
+                : observers.kind === 'error'
+                  ? observers.message
+                  : undefined
+          }
+        />
         <ObserverList title={`${member.name} can observe`} observers={details.theyCanObserve} />
         <div className="mt-auto flex gap-2 pt-3">
           <button
@@ -467,12 +519,12 @@ function ProfileField({ label, value, highlight }: { label: string; value: strin
   )
 }
 
-function ObserverList({ title, observers }: { title: string; observers: ObserverMatch[] }) {
+function ObserverList({ title, observers, emptyText = 'No matches' }: { title: string; observers: ObserverMatch[]; emptyText?: string }) {
   return (
     <div className="mt-2.5">
       <h4 className="text-[9px] font-semibold tracking-wide text-neutral-500 uppercase">{title}</h4>
       {observers.length === 0 ? (
-        <p className="mt-1.5 text-[10px] text-neutral-400">No matches</p>
+        <p className="mt-1.5 text-[10px] text-neutral-400">{emptyText}</p>
       ) : (
         <ul className="mt-1.5 space-y-1.5">
           {observers.map((obs) => (

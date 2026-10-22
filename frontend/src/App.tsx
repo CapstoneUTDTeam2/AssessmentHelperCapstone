@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ComponentType } from 'react'
 import type { Role, User } from './auth/demoAccounts'
+import AlertProvider from './components/AlertProvider'
 import Sidebar from './components/Sidebar'
 import SignupProvider from './components/SignupProvider'
 import CoursePage from './pages/CoursePage'
@@ -112,17 +113,19 @@ function App() {
   const current = page in pages ? page : 'Dashboard'
   const Page = pages[current]
   return (
-    <div className="flex min-h-screen bg-neutral-100 font-sans">
-      <Sidebar
-        user={user}
-        active={PARENT_PAGES[current] ?? current}
-        onNavigate={(item) => handleNavigate(item)}
-        onSignOut={handleSignOut}
-      />
-      <SignupProvider>
-        <Page navigate={handleNavigate} param={param} />
-      </SignupProvider>
-    </div>
+    <AlertProvider>
+      <div className="flex min-h-screen bg-neutral-100 font-sans">
+        <Sidebar
+          user={user}
+          active={PARENT_PAGES[current] ?? current}
+          onNavigate={(item) => handleNavigate(item)}
+          onSignOut={handleSignOut}
+        />
+        <SignupProvider>
+          <Page navigate={handleNavigate} param={param} />
+        </SignupProvider>
+      </div>
+    </AlertProvider>
   )
 }
 
