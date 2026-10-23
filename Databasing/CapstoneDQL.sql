@@ -481,8 +481,6 @@ JOIN Department d
 WHERE p.ProfessorID = 3;
 
 
-
-
 -- Teacher Dashboard: Upcoming Observations
 -- Includes both observer and observee roles
 SELECT

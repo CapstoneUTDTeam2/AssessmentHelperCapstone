@@ -239,9 +239,7 @@ ALTER TABLE ObservationSignup
     REFERENCES TeachingAssignment (SectionID, ProfessorID);
 
 
---Filled out in accordance to the frontend
---Observations last forever
--- (currently on hold due to current observation criteria challenges)
+-- Observations
 CREATE TABLE Observation (
     ObservationID INT PRIMARY KEY,
     SignupID INT NOT NULL,
