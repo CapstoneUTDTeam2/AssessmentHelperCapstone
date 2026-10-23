@@ -1,7 +1,13 @@
 // Be-observed sign-ups and the observers matched to them
 // (backend/app/api/observee_signup.py, observer_matching.py).
 
-import { apiGet, apiPost } from './client'
+import { ApiError, apiGet, apiPost } from './client'
+
+export interface EligibleObserver {
+  observer_id: number
+  name: string
+  department: string
+}
 
 export interface Signup {
   signup_id: number
@@ -12,19 +18,13 @@ export interface Signup {
   section_name: string
   course_code: string
   course_name: string
-  /** Free text; the backend stores ObservationSignup.PreferredTimes, not a list of dates. */
-  preferred_times: string | null
+  /** ISO dates the professor would like to be observed on. */
+  preferred_dates: string[]
   /** ISO date, set by the server. */
   signup_date: string | null
   /** "HH:MM", set by the server. */
   signup_time: string | null
   status: string
-}
-
-export interface EligibleObserver {
-  observer_id: number
-  name: string
-  department: string
 }
 
 export interface ObserverMatches {
@@ -35,6 +35,8 @@ export interface ObserverMatches {
 
 export type SignupWithObservers = Signup & ObserverMatches
 export type CreatedSignup = SignupWithObservers & { in_observer_pool: boolean }
+/** A professor's sign-up; observer matches may not be attached yet. */
+export type ObserveeSignup = Signup & Partial<ObserverMatches>
 
 export interface SignupMatchResult extends ObserverMatches {
   signup_id: number
@@ -54,10 +56,34 @@ export interface SignupMatchResult extends ObserverMatches {
   eligible_count: number
 }
 
+export interface SignupMatch {
+  signup_id?: number
+  faculty_id: number
+  faculty_name: string
+  course_code: string
+  course_name: string
+  section_id: number
+  meeting_days: string
+  start_time: string
+  end_time: string
+  eligible_count: number
+  insufficient: boolean
+  observers: EligibleObserver[]
+}
+
+export interface SignupMatchList {
+  cycle_id: number
+  semester: string
+  year: number
+  signup_count: number
+  insufficient_count: number
+  signups: SignupMatch[]
+}
+
 export interface SignupRequest {
   professor_id: number
   section_id: number
-  preferred_times?: string
+  preferred_dates?: string[]
   /** Defaults to the current cycle. */
   cycle_id?: number
 }
@@ -76,7 +102,22 @@ export function getObserveeSignup(professorId: number, cycleId?: number, signal?
   return apiGet<SignupWithObservers>(`/api/observees/${professorId}/signup`, { cycle_id: cycleId }, signal)
 }
 
+/** Like getObserveeSignup, but null instead of a 404 when they haven't signed up. */
+export async function getObserveeSignupOrNull(professorId: number, signal?: AbortSignal): Promise<ObserveeSignup | null> {
+  try {
+    return await getObserveeSignup(professorId, undefined, signal)
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null
+    throw error
+  }
+}
+
 /** Up to 5 eligible observers for a sign-up. Throws ApiError 404 if the sign-up doesn't exist. */
 export function getEligibleObservers(signupId: number, signal?: AbortSignal) {
   return apiGet<SignupMatchResult>(`/api/signups/${signupId}/eligible-observers`, undefined, signal)
+}
+
+/** Eligible observers for every sign-up in the current cycle. */
+export function listSignupMatches(signal?: AbortSignal) {
+  return apiPost<SignupMatchList>('/api/match-observers/signups', undefined, undefined, signal)
 }

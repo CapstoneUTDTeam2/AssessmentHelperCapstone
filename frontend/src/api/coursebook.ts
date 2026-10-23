@@ -14,5 +14,5 @@ export function ingestCourseBook(
   query?: { prefix?: string; term?: string },
   signal?: AbortSignal,
 ) {
-  return apiPost<CourseBookImport>('/api/coursebook/ingest', undefined, signal, query)
+  return apiPost<CourseBookImport>('/api/coursebook/ingest', undefined, query, signal)
 }

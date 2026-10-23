@@ -59,7 +59,7 @@ function formatTime(time: string) {
   return time.replace(/^0/, '')
 }
 
-function asDays(value: string): Days {
+function asDays(value: string | null): Days {
   if (value === 'TR' || value === 'MWF') return value
   return 'MW'
 }
@@ -77,8 +77,8 @@ function fromCatalog(course: CatalogCourse): Course {
       instructor: section.instructors[0]?.professor_name ?? '—',
       rank: 'Lecturer',
       days: asDays(section.meeting_days),
-      start: section.start_time,
-      end: section.end_time,
+      start: section.start_time ?? '',
+      end: section.end_time ?? '',
       room: '',
       enrolled: 0,
       capacity: 0,

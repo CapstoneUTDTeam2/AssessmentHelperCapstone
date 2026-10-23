@@ -14,7 +14,7 @@ const signup: Signup = {
   section_name: '001',
   course_code: 'CS 4347',
   course_name: 'Database Systems',
-  preferred_times: 'Tuesdays',
+  preferred_dates: ['2026-10-27'],
   signup_date: '2026-09-01',
   signup_time: '09:30',
   status: 'Pending',
@@ -24,12 +24,12 @@ const observers = [{ observer_id: 8, name: 'Grace Hopper', department: 'Computer
 describe('signups', () => {
   it('posts a sign-up and returns the server-set id, date and time', async () => {
     const fetchMock = mockFetch({ ...signup, in_observer_pool: true, observers, insufficient: false })
-    const created = await createSignup({ professor_id: 7, section_id: 12, preferred_times: 'Tuesdays' })
+    const created = await createSignup({ professor_id: 7, section_id: 12, preferred_dates: ['2026-10-27'] })
 
     const { url, init } = fetchCall(fetchMock)
     expect(url).toBe('/api/signups')
     expect(init.method).toBe('POST')
-    expect(JSON.parse(init.body as string)).toEqual({ professor_id: 7, section_id: 12, preferred_times: 'Tuesdays' })
+    expect(JSON.parse(init.body as string)).toEqual({ professor_id: 7, section_id: 12, preferred_dates: ['2026-10-27'] })
     expect(created).toMatchObject({ signup_id: 4, signup_date: '2026-09-01', signup_time: '09:30', observers })
   })
 
