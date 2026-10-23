@@ -6,6 +6,7 @@ import {
   EVALUATION_LOG,
   EVALUATION_REQUIREMENT,
   OPEN_SIGNUPS,
+  RECEIVED_REPORTS,
   TEACHER_TODAY,
   UPCOMING,
 } from '../data/teacherMock'
@@ -13,6 +14,7 @@ import type { HistoryEntry, HistoryType, UpcomingEvaluation } from '../data/teac
 import { useSortedRows } from '../hooks/useSortedRows'
 import type { Comparators } from '../hooks/useSortedRows'
 import { downloadCsv } from '../utils/csv'
+import { loadSignoff } from '../utils/signoffs'
 import type { PageProps } from '../pageProps'
 
 const HISTORY_BADGES: Record<HistoryType, string> = {
@@ -64,6 +66,11 @@ function dueLabel(iso: string) {
   if (days === 0) return `today, ${date}`
   if (days === 1) return `tomorrow, ${date}`
   return date
+}
+
+/** A colleague has submitted their report on your class and it still needs your signature. */
+function awaitingMySignature(u: UpcomingEvaluation) {
+  return u.kind === 'Being observed' && Boolean(RECEIVED_REPORTS[u.id]) && !loadSignoff(u.id)
 }
 
 function monthsUntil(isoMonth: string) {
@@ -147,10 +154,11 @@ function AttentionCard({
   const reports = sessions
     .filter((u) => u.kind === 'Observing' && u.reportDue && u.reportDue >= TEACHER_TODAY)
     .sort((a, b) => a.reportDue!.localeCompare(b.reportDue!))
+  const toSign = sessions.filter(awaitingMySignature).sort((a, b) => a.date.localeCompare(b.date))
   const visits = sessions
     .filter((u) => u.kind === 'Being observed' && !u.confirmed && u.date >= TEACHER_TODAY)
     .sort((a, b) => a.date.localeCompare(b.date))
-  const count = reports.length + visits.length
+  const count = reports.length + toSign.length + visits.length
 
   return (
     <section className={card}>
@@ -177,6 +185,18 @@ function AttentionCard({
           >
             <button type="button" onClick={() => onOpenReport(u.id)} className={primary}>
               Submit report
+            </button>
+          </AttentionItem>
+        ))}
+        {toSign.map((u) => (
+          <AttentionItem
+            key={`sign-${u.id}`}
+            tone="orange"
+            title={`Review and sign ${u.otherProfessor}’s report`}
+            detail={`Observed your ${courseNumber(u.course)} Sec ${u.section} on ${format(u.date, { month: 'short', day: 'numeric' })}`}
+          >
+            <button type="button" onClick={() => onOpenReport(u.id)} className={primary}>
+              Review and sign
             </button>
           </AttentionItem>
         ))}
@@ -477,6 +497,8 @@ function RecentlyCompletedCard({
         {items.map((u) => {
           const observedYou = u.kind === 'Being observed'
           const reportDue = !observedYou && u.reportDue
+          const received = observedYou && Boolean(RECEIVED_REPORTS[u.id])
+          const toSign = awaitingMySignature(u)
           const title = observedYou
             ? `${u.otherProfessor} → your ${courseNumber(u.course)} Sec ${u.section}`
             : `${u.otherProfessor} · ${courseNumber(u.course)} Sec ${u.section}`
@@ -493,14 +515,29 @@ function RecentlyCompletedCard({
                     <span className="h-1.5 w-1.5 rounded-full bg-[#b3261e]" aria-hidden="true" />
                     Report due {dueLabel(u.reportDue!).split(',')[0]}
                   </p>
+                ) : toSign ? (
+                  <p className="mt-0.5 flex items-center gap-1 text-[10px] text-[#c4561a]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#c4561a]" aria-hidden="true" />
+                    Waiting for your signature
+                  </p>
                 ) : (
-                  <p className="mt-0.5 text-[10px] text-[#3f8a55]">✓ {observedYou ? 'Feedback ready' : 'Report submitted'}</p>
+                  <p className="mt-0.5 text-[10px] text-[#3f8a55]">
+                    ✓ {received ? 'Signed' : observedYou ? 'Feedback ready' : 'Report submitted'}
+                  </p>
                 )}
               </div>
               <div className="shrink-0">
                 {reportDue ? (
                   <button type="button" onClick={() => onOpenReport(u.id)} className={primary}>
                     Submit report
+                  </button>
+                ) : toSign ? (
+                  <button type="button" onClick={() => onOpenReport(u.id)} className={primary}>
+                    Review and sign
+                  </button>
+                ) : received ? (
+                  <button type="button" onClick={() => onOpenReport(u.id)} className={secondary}>
+                    View report
                   </button>
                 ) : observedYou ? (
                   <button type="button" className={secondary}>
