@@ -2,11 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { getProfessorEvaluationStatus } from '../api/evaluationStatus'
 import { DEMO_PROFESSOR_ID, loggedInProfessorId } from '../auth/session'
 import { SignupActions, SignupStatus } from '../components/SignupActions'
-import { useSignups } from '../hooks/useSignups'
-import { MockDataBadge, MockDataNote } from '../components/MockData'
-import { TEACHER_PROFILE, TEACHER_TODAY, UPCOMING } from '../data/teacherMock'
-import type { UpcomingEvaluation, UpcomingKind, Weekday, WeeklyBlock } from '../data/teacherMock'
-import { weekdaysFromMeetingDays } from '../utils/calendar'
+import {
+  TEACHER_PROFILE,
+  TEACHER_TODAY,
+  UPCOMING,
+  WEEKLY_SCHEDULE,
+} from '../data/teacherMock'
+import type { UpcomingEvaluation, UpcomingKind, Weekday } from '../data/teacherMock'
+import { useAlert } from '../hooks/useAlert'
+import { observerListReadyAlert } from '../hooks/useObserverMatching'
 
 const KIND_BADGES: Record<UpcomingKind, string> = {
   'Being observed': 'bg-[#e0791a]',
@@ -95,45 +99,24 @@ function eventsOn(date: string, weekday: Weekday, schedule: WeeklyBlock[], upcom
 }
 
 function TeacherDashboardPage() {
-  const { classes, cycle } = useSignups()
-  const today = cycle?.today ?? new Date().toISOString().slice(0, 10)
-  const [profile, setProfile] = useState({
-    name: TEACHER_PROFILE.name,
-    cycle: TEACHER_PROFILE.evaluationCycle,
-    nextEvaluation: TEACHER_PROFILE.nextEvaluation,
-    status: '',
-    rank: TEACHER_PROFILE.rank,
-  })
+  const thisMonth = TEACHER_TODAY.slice(0, 7)
+  const evaluationsThisMonth = UPCOMING.filter((u) => u.date.startsWith(thisMonth)).length
+  const { showAlert } = useAlert()
 
-  useEffect(() => {
-    const professorId = loggedInProfessorId() ?? DEMO_PROFESSOR_ID
-    const controller = new AbortController()
-    getProfessorEvaluationStatus(professorId, controller.signal)
-      .then((status) => {
-        setProfile({
-          name: status.name,
-          cycle: status.frequency_years === 1 ? 'Every year' : `Every ${status.frequency_years ?? 2} years`,
-          nextEvaluation: status.next_due_year ? `${status.next_due_semester ?? ''} ${status.next_due_year}`.trim() : '—',
-          status: status.status,
-          rank: status.current_level ?? TEACHER_PROFILE.rank,
-        })
-      })
-      .catch(() => {
-        /* keep demo labels */
-      })
-    return () => controller.abort()
-  }, [])
-
-  const schedule: WeeklyBlock[] = classes.map((row) => ({
-    course: row.course_code,
-    courseName: `${row.course_code} ${row.course_name}`,
-    days: weekdaysFromMeetingDays(row.meeting_days),
-    start: row.start_time.slice(0, 5),
-    end: row.end_time.slice(0, 5),
-    room: null,
-  }))
-  const upcoming: UpcomingEvaluation[] = UPCOMING
-  const termLabel = cycle ? `${cycle.semester} ${cycle.year}` : '—'
+  // TEMPORARY: previews the "observer list is ready" alert with sample data.
+  // Remove once useObserverListReadyAlert is wired to the logged-in professor.
+  const testObserverListReadyAlert = () =>
+    showAlert(
+      observerListReadyAlert({
+        course_code: 'CS 1337',
+        section_name: '001',
+        observers: [
+          { observer_id: 1, name: 'Sample Observer 1', department: 'Computer Science' },
+          { observer_id: 2, name: 'Sample Observer 2', department: 'Computer Science' },
+          { observer_id: 3, name: 'Sample Observer 3', department: 'Computer Science' },
+        ],
+      }),
+    )
 
   return (
     <main className="min-w-0 flex-1 px-6 py-7">
@@ -146,7 +129,16 @@ function TeacherDashboardPage() {
           </p>
           <SignupStatus />
         </div>
-        <SignupActions />
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={testObserverListReadyAlert}
+            className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 transition-colors hover:bg-neutral-50"
+          >
+            Edit Profile
+          </button>
+          <SignupActions />
+        </div>
       </header>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr]">

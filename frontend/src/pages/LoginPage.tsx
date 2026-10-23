@@ -84,14 +84,14 @@ function LoginPage({ onLogin }: LoginPageProps) {
 
           <div className="mt-5">
             <label htmlFor="email" className="text-xs text-neutral-800">
-              UTD email
+              Email
             </label>
             <input
               id="email"
               type="email"
               autoComplete="email"
               required
-              placeholder="netid@utdallas.edu"
+              placeholder="you@example.com"
               value={email}
               onChange={(e) => {
                 setEmail(e.target.value)

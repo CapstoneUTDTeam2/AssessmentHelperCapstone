@@ -1,10 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { getObserveeSignupOrNull } from '../api/signups'
-import type { EligibleObserver } from '../api/signups'
-import { MockDataBadge, MockDataNote } from '../components/MockData'
+import { ApiError } from '../api/client'
 import { getFaculty } from '../api/faculty'
-import { FACULTY } from '../data/facultyMock'
-import { downloadCsv } from '../utils/csv'
+import type { SignupWithObservers } from '../api/signups'
 import type { CurrentTerm } from '../api/evaluationStatus'
 import { LEVEL_COLORS } from '../theme'
 import type {
@@ -14,15 +11,9 @@ import type {
   FacultyMember,
   StatusTone,
 } from '../data/facultyMock'
+import { useObserverMatching } from '../hooks/useObserverMatching'
 
 const STATUS_PILLS: Record<StatusTone, string> = {
-  due: 'bg-[#e0791a]',
-  overdue: 'bg-[#b3261e]',
-  ok: 'bg-[#3f8a55]',
-  unknown: 'bg-neutral-500',
-}
-
-const PROGRESS_BARS: Record<StatusTone, string> = {
   due: 'bg-[#e0791a]',
   overdue: 'bg-[#b3261e]',
   ok: 'bg-[#3f8a55]',
@@ -52,14 +43,14 @@ const FILTERS: { key: FilterKey; label: string; match: (f: FacultyMember) => boo
   { key: 'needsObserver', label: 'Needs observer', match: (f) => f.needsObserver },
 ]
 
-type SortKey = 'next' | 'name' | 'level' | 'courses' | 'progress'
+type SortKey = 'next' | 'name' | 'level' | 'courses' | 'observations'
 
 const SORT_LABELS: Record<SortKey, string> = {
   next: 'Next evaluation',
   name: 'Name',
   level: 'Level',
   courses: 'Courses',
-  progress: 'Progress',
+  observations: 'Observations',
 }
 
 const COMPARATORS: Record<SortKey, (a: FacultyMember, b: FacultyMember) => number> = {
@@ -67,19 +58,14 @@ const COMPARATORS: Record<SortKey, (a: FacultyMember, b: FacultyMember) => numbe
   name: (a, b) => a.name.localeCompare(b.name),
   level: (a, b) => a.level.localeCompare(b.level),
   courses: (a, b) => (a.courses[0] ?? '').localeCompare(b.courses[0] ?? ''),
-  progress: (a, b) => progress(a) - progress(b),
-}
-
-/** Share of required evaluations completed; 0 when none are required yet. */
-function progress(f: FacultyMember) {
-  return f.required ? f.completed / f.required : 0
+  observations: (a, b) => (a.observationsReceived ?? -1) - (b.observationsReceived ?? -1),
 }
 
 const COLUMNS: { label: string; sortKey: SortKey }[] = [
   { label: 'Faculty', sortKey: 'name' },
   { label: 'Level', sortKey: 'level' },
   { label: 'Courses', sortKey: 'courses' },
-  { label: 'Evaluation obligations', sortKey: 'progress' },
+  { label: 'Observations this cycle', sortKey: 'observations' },
   { label: 'Evaluation status', sortKey: 'next' },
 ]
 
@@ -306,27 +292,12 @@ function FacultyPage() {
                       </div>
                     </td>
                     <td className="px-2 py-2.5">
-                      {member.required === 0 ? (
+                      {member.observationsReceived === null ? (
                         <span className="text-neutral-400">—</span>
                       ) : (
-                        <>
-                          <p className="text-[10px] text-neutral-800">
-                            {member.completed} of {member.required} evaluations completed
-                          </p>
-                          <div
-                            className="mt-1 h-1 w-28 rounded-full bg-neutral-200"
-                            role="progressbar"
-                            aria-valuemin={0}
-                            aria-valuemax={member.required}
-                            aria-valuenow={member.completed}
-                            aria-label={`${member.name} evaluations completed`}
-                          >
-                            <div
-                              className={`h-1 rounded-full ${PROGRESS_BARS[member.statusTone]}`}
-                              style={{ width: `${Math.max(progress(member) * 100, 4)}%` }}
-                            />
-                          </div>
-                        </>
+                        <p className="text-[10px] text-neutral-800">
+                          {member.observationsReceived} observation{member.observationsReceived === 1 ? '' : 's'} received
+                        </p>
                       )}
                     </td>
                     <td className="px-2 py-2.5">
@@ -338,7 +309,7 @@ function FacultyPage() {
                   {isOpen && (
                     <tr className="border-t border-neutral-100 bg-neutral-50">
                       <td colSpan={COLUMNS.length + 2} className="px-10 py-4">
-                        <FacultyDetailsPanel member={member} />
+                        <FacultyDetailsPanel member={member} faculty={faculty} />
                       </td>
                     </tr>
                   )}
@@ -366,21 +337,44 @@ function FacultyPage() {
   )
 }
 
-function FacultyDetailsPanel({ member }: { member: FacultyMember }) {
-  const mockDetails = FACULTY.find((row) => row.id === member.id)?.details
-  const { details } = member
-  const past = details.past.length > 0 ? details.past : mockDetails?.past ?? []
-  const upcoming = details.upcoming.length > 0 ? details.upcoming : mockDetails?.upcoming ?? []
-  const pastIsMock = details.past.length === 0 && past.length > 0
-  const [observers, setObservers] = useState<EligibleObserver[] | null>(null)
+type ObserverLoad =
+  | { kind: 'loading' }
+  | { kind: 'ready'; observers: ObserverMatch[] }
+  | { kind: 'not-signed-up' }
+  | { kind: 'error'; message: string }
 
+/** "CS 4347" -> "4000s", the same course-level grouping the matching backend uses. */
+function courseLevelLabel(courseCode: string) {
+  const digit = courseCode.match(/\d/)?.[0]
+  return digit ? `${digit}000s` : '—'
+}
+
+function toObserverMatches(signup: SignupWithObservers, faculty: FacultyMember[]): ObserverMatch[] {
+  return signup.observers.map((o) => ({
+    name: o.name,
+    rank: faculty.find((f) => f.id === o.observer_id)?.level ?? '—',
+    detail: `${o.department} · ${signup.course_code}`,
+    courseLevel: courseLevelLabel(signup.course_code),
+  }))
+}
+
+function FacultyDetailsPanel({ member, faculty }: { member: FacultyMember; faculty: FacultyMember[] }) {
+  const { details } = member
+  const { fetchObserveeSignup } = useObserverMatching()
+  const [observers, setObservers] = useState<ObserverLoad>({ kind: 'loading' })
+
+  // Observers who can observe this member come from their be-observed sign-up this cycle.
   useEffect(() => {
     const controller = new AbortController()
-    getObserveeSignupOrNull(member.id, controller.signal)
-      .then((signup) => setObservers(signup?.observers ?? []))
-      .catch(() => setObservers([]))
+    fetchObserveeSignup(member.id, controller.signal)
+      .then((signup) => setObservers({ kind: 'ready', observers: toObserverMatches(signup, faculty) }))
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return
+        if (err instanceof ApiError && err.status === 404) setObservers({ kind: 'not-signed-up' })
+        else setObservers({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to load observers' })
+      })
     return () => controller.abort()
-  }, [member.id])
+  }, [member.id, faculty, fetchObserveeSignup])
 
   return (
     <div className="grid gap-3 lg:grid-cols-[1.25fr_0.85fr_1fr]">
@@ -418,8 +412,38 @@ function FacultyDetailsPanel({ member }: { member: FacultyMember }) {
 
       <section className="flex flex-col rounded-lg border border-neutral-200 bg-white p-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold text-neutral-900">Eligible Observers</h3>
-          <span className="text-[9px] text-neutral-500">Same department · same course level</span>
+          <h3 className="text-xs font-semibold text-neutral-900">Potential Observers</h3>
+          <span className="text-[9px] text-neutral-500">
+            Sort: <span className="text-neutral-800">Level</span>
+          </span>
+        </div>
+        <ObserverList
+          title={`Can observe ${member.name}`}
+          observers={observers.kind === 'ready' ? observers.observers : []}
+          emptyText={
+            observers.kind === 'loading'
+              ? 'Loading…'
+              : observers.kind === 'not-signed-up'
+                ? 'Not signed up to be observed this cycle'
+                : observers.kind === 'error'
+                  ? observers.message
+                  : undefined
+          }
+        />
+        <ObserverList title={`${member.name} can observe`} observers={details.theyCanObserve} />
+        <div className="mt-auto flex gap-2 pt-3">
+          <button
+            type="button"
+            className="flex-1 rounded-md bg-[#e0791a] px-3 py-2 text-[11px] font-medium text-white transition-colors hover:bg-[#c96a12]"
+          >
+            Assign Evaluation
+          </button>
+          <button
+            type="button"
+            className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-[11px] text-neutral-900 transition-colors hover:bg-neutral-50"
+          >
+            Full profile
+          </button>
         </div>
         <ApiObserverList observers={observers} />
       </section>
@@ -463,29 +487,31 @@ function ProfileField({ label, value, highlight }: { label: string; value: strin
   )
 }
 
-function ApiObserverList({ observers }: { observers: EligibleObserver[] | null }) {
-  if (observers === null) {
-    return <p className="mt-2.5 text-[10px] text-neutral-400">Loading observers…</p>
-  }
-  if (observers.length === 0) {
-    return (
-      <p className="mt-2.5 text-[10px] text-neutral-400">
-        No signup this cycle, or no eligible observers (same department, same course level, free at class time).
-      </p>
-    )
-  }
+function ObserverList({ title, observers, emptyText = 'No matches' }: { title: string; observers: ObserverMatch[]; emptyText?: string }) {
   return (
-    <ul className="mt-2.5 space-y-1.5">
-      {observers.map((obs) => (
-        <li key={obs.observer_id} className="flex items-center gap-2 rounded-md bg-neutral-50 px-2 py-1.5">
-          <span className="h-5 w-5 shrink-0 rounded-full bg-[#1c4532]" aria-hidden="true" />
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] text-neutral-900">{obs.name}</p>
-            <p className="truncate text-[9px] text-neutral-500">{obs.department}</p>
-          </div>
-        </li>
-      ))}
-    </ul>
+    <div className="mt-2.5">
+      <h4 className="text-[9px] font-semibold tracking-wide text-neutral-500 uppercase">{title}</h4>
+      {observers.length === 0 ? (
+        <p className="mt-1.5 text-[10px] text-neutral-400">{emptyText}</p>
+      ) : (
+        <ul className="mt-1.5 space-y-1.5">
+          {observers.map((obs) => (
+            <li key={obs.name} className="flex items-center gap-2 rounded-md bg-neutral-50 px-2 py-1.5">
+              <span className="h-5 w-5 shrink-0 rounded-full bg-[#1c4532]" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] text-neutral-900">
+                  {obs.name} · {obs.rank}
+                </p>
+                <p className="truncate text-[9px] text-neutral-500">{obs.detail}</p>
+              </div>
+              <span className="shrink-0 rounded-full bg-[#3f8a55] px-2 py-0.5 text-[9px] font-medium text-white">
+                {obs.courseLevel}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 

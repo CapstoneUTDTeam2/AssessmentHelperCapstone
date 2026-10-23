@@ -50,3 +50,36 @@ export function getOverdueProfessors(signal?: AbortSignal) {
 export function getProfessorEvaluationStatus(professorId: number, signal?: AbortSignal) {
   return apiGet<ProfessorEvaluationStatusDetail>(`/api/evaluation-status/${professorId}`, undefined, signal)
 }
+
+export interface LevelCount {
+  /** Professors.CurrentLevel, or "Unknown" when it isn't set. */
+  level: string
+  count: number
+}
+
+export interface FacultySummary {
+  totalFaculty: number
+  countByRank: LevelCount[]
+}
+
+/** Counts professors per CurrentLevel, in first-seen order. */
+export function countByLevel(professors: ProfessorEvaluationStatus[]): LevelCount[] {
+  const counts = new Map<string, number>()
+  for (const p of professors) {
+    const level = p.current_level ?? 'Unknown'
+    counts.set(level, (counts.get(level) ?? 0) + 1)
+  }
+  return [...counts].map(([level, count]) => ({ level, count }))
+}
+
+/** "Faculty summary": built from the full status list, since there is no summary route. */
+export async function getFacultySummary(signal?: AbortSignal): Promise<FacultySummary> {
+  const { professors } = await getEvaluationStatuses(undefined, signal)
+  return { totalFaculty: professors.length, countByRank: countByLevel(professors) }
+}
+
+/** "Faculty due by hire level": professors with EvaluationStatus = Due, grouped by CurrentLevel. */
+export async function getDueCountByLevel(signal?: AbortSignal): Promise<LevelCount[]> {
+  const { professors } = await getDueProfessors(signal)
+  return countByLevel(professors)
+}

@@ -2,7 +2,7 @@ import { Notice, Row, Segmented, Select, SettingsLayout, Toggle } from '../compo
 import type { SettingsSection } from '../components/settings'
 import useDraft from '../hooks/useDraft'
 import { TEACHER_PROFILE } from '../data/teacherMock'
-import { HOURS, TEACHER_SETTINGS, TIME_ZONES } from '../data/settingsMock'
+import { DEADLINE_NOTICES, DIGEST_TIMES, HOURS, TEACHER_SETTINGS, TIME_ZONES } from '../data/settingsMock'
 
 function ReadOnly({ children }: { children: string }) {
   return <span className="rounded-md bg-neutral-50 px-2.5 py-1.5 text-xs text-neutral-700">{children}</span>
@@ -17,9 +17,9 @@ function TeacherSettingsPage() {
       title: 'Profile',
       description: 'Fields the Professors table stores: name, rank, and department',
       content: [
-        <Notice key="notice" title="No accounts or contact fields in the database">
-          Professors has name, department, current level, and start term. There is no email, office, hire date, or
-          tenure column.
+        <Notice key="notice" title="Your profile is managed by the Assessment Committee">
+          Your name, rank, and start term are kept up to date by AC members. Course assignments come from CourseBook, and
+          your instructor level is based on the courses you teach. Contact a committee member to correct anything here.
         </Notice>,
         <Row key="name" label="Display name" description="Professors.ProfessorName">
           <ReadOnly>{TEACHER_PROFILE.name}</ReadOnly>

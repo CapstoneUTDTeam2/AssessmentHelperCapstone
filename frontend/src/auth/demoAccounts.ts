@@ -19,14 +19,14 @@ interface DemoAccount extends User {
 
 export const DEMO_ACCOUNTS: DemoAccount[] = [
   {
-    email: 'coordinator@utdallas.edu',
+    email: 'coordinator@example.com',
     password: 'demo1234',
     name: 'AC Member',
     title: 'Committee Chair',
     role: 'coordinator',
   },
   {
-    email: 'professor.a@utdallas.edu',
+    email: 'professor.a@example.com',
     password: 'faculty1234',
     name: 'Alice Johnson',
     title: 'Faculty',
