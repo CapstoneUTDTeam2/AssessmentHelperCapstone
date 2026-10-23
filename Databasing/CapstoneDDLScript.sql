@@ -39,9 +39,29 @@ CREATE TABLE Professors (
     ProfessorDepartment INT NOT NULL ,
     CurrentLevel VARCHAR(30),
     StartTermID INT,
+    Email TEXT,
+    pass_hash VARCHAR(64),
     foreign key (ProfessorDepartment) references Department(DepartmentID),
     foreign key (StartTermID) references AcademicTerm(TermID)
 );
+
+CREATE OR REPLACE FUNCTION fill_professor_email()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.Email IS NULL OR trim(NEW.Email) = '' THEN
+        NEW.Email :=
+            lower(regexp_replace(trim(NEW.ProfessorName), '\s+', '', 'g'))
+            || '@utdallas.edu';
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER populate_professor_email
+BEFORE INSERT OR UPDATE ON Professors
+FOR EACH ROW
+EXECUTE FUNCTION fill_professor_email();
 
 CREATE TABLE Courses (
     CourseID INT PRIMARY KEY,
@@ -1174,3 +1194,5 @@ BEFORE INSERT OR UPDATE
 ON ObserverRequest
 FOR EACH ROW
 EXECUTE FUNCTION check_observer_qualification();
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
