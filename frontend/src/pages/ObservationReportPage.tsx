@@ -2,12 +2,12 @@ import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { CRITERIA, CURRENT_CYCLE, RATING_SCALE, SECTIONS } from '../data/criteriaMock'
 import type { Criterion } from '../data/criteriaMock'
-import { TEACHER_PROFILE, UPCOMING } from '../data/teacherMock'
-import type { UpcomingEvaluation } from '../data/teacherMock'
+import { RECEIVED_REPORTS, TEACHER_PROFILE, UPCOMING } from '../data/teacherMock'
+import type { ReceivedReport, ReportRating as Rating, UpcomingEvaluation } from '../data/teacherMock'
 import type { PageProps } from '../pageProps'
 import { formatTime, fromIso } from '../utils/calendar'
-
-type Rating = '5' | '4' | '3' | '2' | '1' | 'N/A'
+import { loadSignoff, storeSignoff } from '../utils/signoffs'
+import type { Signoff } from '../utils/signoffs'
 
 // Ratings come from the same scale the AC edits on the Evaluation Criteria page.
 const RATINGS = RATING_SCALE.map((r) => ({ value: r.label.split(' · ')[0] as Rating, label: r.label, tone: r.tone }))
@@ -33,7 +33,6 @@ interface Draft {
   notes: Record<number, CriterionNotes>
   strengths: string
   growth: string
-  signature: string
   confirmed: boolean
   submitted: boolean
 }
@@ -67,7 +66,6 @@ function newDraft(session: UpcomingEvaluation): Draft {
     notes: {},
     strengths: '',
     growth: '',
-    signature: '',
     confirmed: false,
     submitted: false,
   }
@@ -77,21 +75,36 @@ function longDate(iso: string) {
   return fromIso(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
 }
 
+function shortDate(iso: string) {
+  return fromIso(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+}
+
+function todayLabel() {
+  return new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+}
+
+/** Same criteria, order, and numbering as the AC's Evaluation Criteria page. */
+function reportCriteria() {
+  return SECTIONS.flatMap((s) => CRITERIA.filter((c) => c.active && c.sectionId === s.id))
+}
+
 const input =
   'w-full rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-900 placeholder:text-neutral-400 read-only:text-neutral-600 focus:bg-white'
 const card = 'rounded-lg border border-neutral-200 bg-white p-4'
 
 function ObservationReportPage({ navigate, param }: PageProps) {
-  const session = UPCOMING.find((u) => String(u.id) === param && u.kind === 'Observing')
-  if (!session) {
-    return (
-      <main className="min-w-0 flex-1 px-6 py-7">
-        <BackLink onClick={() => navigate('Evaluations')} />
-        <p className="mt-6 text-sm text-neutral-700">That observation couldn’t be found.</p>
-      </main>
-    )
-  }
-  return <ReportForm key={session.id} session={session} onBack={() => navigate('Evaluations')} />
+  const session = UPCOMING.find((u) => String(u.id) === param)
+  const onBack = () => navigate('Evaluations')
+  // You write reports for classes you observe, and review and sign reports on your own classes.
+  if (session?.kind === 'Observing') return <ReportForm key={session.id} session={session} onBack={onBack} />
+  const received = session && RECEIVED_REPORTS[session.id]
+  if (session && received) return <ObserveeReview key={session.id} session={session} report={received} onBack={onBack} />
+  return (
+    <main className="min-w-0 flex-1 px-6 py-7">
+      <BackLink onClick={onBack} />
+      <p className="mt-6 text-sm text-neutral-700">That observation couldn’t be found.</p>
+    </main>
+  )
 }
 
 function ReportForm({ session, onBack }: { session: UpcomingEvaluation; onBack: () => void }) {
@@ -100,14 +113,10 @@ function ReportForm({ session, onBack }: { session: UpcomingEvaluation; onBack: 
   const [savedAt, setSavedAt] = useState<string | null>(null)
   const [showErrors, setShowErrors] = useState(false)
 
-  // Same criteria, order, and numbering as the AC's Evaluation Criteria page.
-  const criteria = useMemo(
-    () => SECTIONS.flatMap((s) => CRITERIA.filter((c) => c.active && c.sectionId === s.id)),
-    [],
-  )
+  const criteria = useMemo(() => reportCriteria(), [])
   const ratedCount = criteria.filter((c) => draft.ratings[c.id]).length
   const locked = draft.submitted
-  const today = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+  const today = todayLabel()
 
   const needsGrowthNote = (c: Criterion) =>
     c.notesOnLowRating && LOW_RATINGS.includes(draft.ratings[c.id]) && !draft.notes[c.id]?.growth.trim()
@@ -115,8 +124,7 @@ function ReportForm({ session, onBack }: { session: UpcomingEvaluation; onBack: 
   const problems = [
     ratedCount < criteria.length && `Rate every criterion (${criteria.length - ratedCount} left) · use N/A for anything not observed`,
     criteria.some(needsGrowthNote) && 'Add an opportunity for growth to every criterion rated 1 or 2',
-    !draft.confirmed && 'Check the confirmation box',
-    draft.signature.trim().toLowerCase() !== TEACHER_PROFILE.name.toLowerCase() && `Type your full name (${TEACHER_PROFILE.name}) to sign`,
+    !draft.confirmed && 'Check the box to sign the report',
   ].filter(Boolean) as string[]
 
   const update = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }))
@@ -186,31 +194,7 @@ function ReportForm({ session, onBack }: { session: UpcomingEvaluation; onBack: 
         )}
       </header>
 
-      <ol className="mt-4 flex flex-wrap items-center gap-2" aria-label="Report status">
-        {steps.map((s, i) => (
-          <li key={s.title} className="flex items-center gap-2">
-            {i > 0 && <span className="h-px w-6 bg-neutral-300" aria-hidden="true" />}
-            <span
-              aria-current={i === step ? 'step' : undefined}
-              className={`flex items-center gap-2 rounded-full border py-1 pr-3 pl-1 ${
-                i === step ? 'border-[#e0791a] bg-[#e0791a] text-white' : 'border-neutral-200 bg-white text-neutral-900'
-              }`}
-            >
-              <span
-                className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${
-                  i === step ? 'bg-white text-[#e0791a]' : i < step ? 'bg-[#1c4532] text-white' : 'bg-neutral-100 text-neutral-600'
-                }`}
-              >
-                {i < step ? '✓' : i + 1}
-              </span>
-              <span className="leading-tight">
-                <span className="block text-[11px] font-medium">{s.title}</span>
-                <span className={`block text-[9px] ${i === step ? 'text-white/80' : 'text-neutral-500'}`}>{s.detail}</span>
-              </span>
-            </span>
-          </li>
-        ))}
-      </ol>
+      <Steps steps={steps} current={step} />
 
       {locked && (
         <div className="mt-4 rounded-lg bg-[#e3efe6] px-4 py-3 text-xs text-[#1c4532]">
@@ -362,17 +346,9 @@ function ReportForm({ session, onBack }: { session: UpcomingEvaluation; onBack: 
                   onChange={(e) => update({ confirmed: e.target.checked })}
                   className="mt-0.5 accent-[#1c4532]"
                 />
-                I confirm this report reflects my observation. Typing my name below counts as my electronic signature.
+                I confirm this report reflects my observation. Checking this box is my electronic signature.
               </label>
               <div className="mt-3 flex flex-wrap items-end gap-3">
-                <Field label="Type your full name to sign" className="min-w-56 flex-1">
-                  <input
-                    value={draft.signature}
-                    onChange={(e) => update({ signature: e.target.value })}
-                    placeholder={TEACHER_PROFILE.name}
-                    className={input}
-                  />
-                </Field>
                 <Field label="Date" className="w-36">
                   <input readOnly value={today} className={input} />
                 </Field>
@@ -399,6 +375,204 @@ function ReportForm({ session, onBack }: { session: UpcomingEvaluation; onBack: 
         </section>
       </div>
     </main>
+  )
+}
+
+function ObserveeReview({
+  session,
+  report,
+  onBack,
+}: {
+  session: UpcomingEvaluation
+  report: ReceivedReport
+  onBack: () => void
+}) {
+  const [signoff, setSignoff] = useState<Signoff | null>(() => loadSignoff(session.id))
+  const [reviewed, setReviewed] = useState(false)
+  const [response, setResponse] = useState('')
+  const criteria = useMemo(() => reportCriteria(), [])
+
+  const sign = () => {
+    const signed = { signedOn: new Date().toISOString().slice(0, 10), response: response.trim() }
+    storeSignoff(session.id, signed)
+    setSignoff(signed)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const steps = [
+    { title: 'Observer signs', detail: session.otherProfessor },
+    { title: 'You review and sign', detail: 'You' },
+    { title: 'Complete', detail: 'Locked once both sign' },
+  ]
+
+  return (
+    <main className="min-w-0 flex-1 px-6 py-7">
+      <header>
+        <BackLink onClick={onBack} />
+        <h1 className="mt-1 text-xl font-semibold text-neutral-900">Observation report</h1>
+        <p className="mt-1 text-xs text-neutral-500">
+          Observed by {session.otherProfessor} · {session.course.split(' ').slice(0, 2).join(' ')} Sec {session.section} ·{' '}
+          {longDate(session.date)} · {formatTime(session.start)}–{formatTime(session.end)}
+          {session.room && ` · ${session.room}`}
+        </p>
+      </header>
+
+      <Steps steps={steps} current={signoff ? steps.length : 1} />
+
+      {signoff && (
+        <div className="mt-4 rounded-lg bg-[#e3efe6] px-4 py-3 text-xs text-[#1c4532]">
+          <p className="font-medium">Signed · report complete</p>
+          <p className="mt-0.5 text-[11px]">You and {session.otherProfessor} have both signed. The report is now locked.</p>
+        </div>
+      )}
+
+      <div className="mt-4 flex flex-col gap-4">
+        <section className={card}>
+          <h2 className="text-sm font-semibold text-neutral-900">Summary</h2>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <div>
+              <p className="text-[11px] text-neutral-600">Overall strengths observed</p>
+              <p className="mt-1 text-xs text-neutral-900">{report.strengths}</p>
+            </div>
+            <div>
+              <p className="text-[11px] text-neutral-600">Overall areas for growth</p>
+              <p className="mt-1 text-xs text-neutral-900">{report.growth}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className={card}>
+          <h2 className="text-sm font-semibold text-neutral-900">Ratings</h2>
+          {SECTIONS.map((s) => {
+            const inSection = criteria.filter((c) => c.sectionId === s.id)
+            if (inSection.length === 0) return null
+            return (
+              <div key={s.id}>
+                <h3 className="mt-3 border-b border-neutral-100 pb-1.5 text-[11px] font-semibold tracking-wide text-neutral-500 uppercase">
+                  {s.name}
+                </h3>
+                <ol className="divide-y divide-neutral-100">
+                  {inSection.map((c) => {
+                    const rating = RATINGS.find((r) => r.value === report.ratings[c.id])
+                    return (
+                      <li key={c.id} className="flex items-start gap-3 py-2.5">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[#fbe8d6] text-[10px] font-medium text-[#c4561a]">
+                          {criteria.indexOf(c) + 1}
+                        </span>
+                        <p className="min-w-0 flex-1 text-xs text-neutral-900">{c.text}</p>
+                        <span
+                          className={`shrink-0 rounded border px-2 py-0.5 text-[11px] ${
+                            rating ? RATING_SELECTED[rating.tone] : 'border-neutral-200 text-neutral-400'
+                          }`}
+                        >
+                          {rating?.label ?? 'Not rated'}
+                        </span>
+                      </li>
+                    )
+                  })}
+                </ol>
+              </div>
+            )
+          })}
+        </section>
+
+        <section className={card}>
+          <h2 className="text-sm font-semibold text-neutral-900">Electronic signatures</h2>
+          <p className="mt-0.5 text-[11px] text-neutral-500">
+            Signing confirms you have read the report, not that you agree with it. Use the response box to add your side.
+          </p>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <SignerCard
+              role="Observer"
+              name={session.otherProfessor}
+              detail={`Signed ${shortDate(report.observerSignedOn)}`}
+              status="Signed"
+              active={false}
+            />
+            <SignerCard
+              role="Faculty observed"
+              name={`${TEACHER_PROFILE.name} (you)`}
+              detail={signoff ? `Signed ${shortDate(signoff.signedOn)}` : 'Check the box below to sign'}
+              status={signoff ? 'Signed' : 'Ready to sign'}
+              active={!signoff}
+            />
+          </div>
+
+          {signoff ? (
+            signoff.response && (
+              <div className="mt-4">
+                <p className="text-[11px] text-neutral-600">Your response</p>
+                <p className="mt-1 text-xs text-neutral-900">{signoff.response}</p>
+              </div>
+            )
+          ) : (
+            <>
+              <Field label="Your response (optional)" className="mt-4">
+                <textarea
+                  rows={3}
+                  value={response}
+                  onChange={(e) => setResponse(e.target.value)}
+                  placeholder="Add any comments for the Assessment Committee…"
+                  className={input}
+                />
+              </Field>
+              <label className="mt-4 flex items-start gap-2 text-xs text-neutral-900">
+                <input
+                  type="checkbox"
+                  checked={reviewed}
+                  onChange={(e) => setReviewed(e.target.checked)}
+                  className="mt-0.5 accent-[#1c4532]"
+                />
+                I have reviewed this report. Checking this box is my electronic signature.
+              </label>
+              <div className="mt-3 flex flex-wrap items-end gap-3">
+                <Field label="Date" className="w-36">
+                  <input readOnly value={todayLabel()} className={input} />
+                </Field>
+                <button
+                  type="button"
+                  onClick={sign}
+                  disabled={!reviewed}
+                  className="ml-auto rounded-md bg-[#e0791a] px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#c96a12] disabled:bg-neutral-300"
+                >
+                  Sign report
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+      </div>
+    </main>
+  )
+}
+
+function Steps({ steps, current }: { steps: { title: string; detail: string }[]; current: number }) {
+  return (
+    <ol className="mt-4 flex flex-wrap items-center gap-2" aria-label="Report status">
+      {steps.map((s, i) => (
+        <li key={s.title} className="flex items-center gap-2">
+          {i > 0 && <span className="h-px w-6 bg-neutral-300" aria-hidden="true" />}
+          <span
+            aria-current={i === current ? 'step' : undefined}
+            className={`flex items-center gap-2 rounded-full border py-1 pr-3 pl-1 ${
+              i === current ? 'border-[#e0791a] bg-[#e0791a] text-white' : 'border-neutral-200 bg-white text-neutral-900'
+            }`}
+          >
+            <span
+              className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${
+                i === current ? 'bg-white text-[#e0791a]' : i < current ? 'bg-[#1c4532] text-white' : 'bg-neutral-100 text-neutral-600'
+              }`}
+            >
+              {i < current ? '✓' : i + 1}
+            </span>
+            <span className="leading-tight">
+              <span className="block text-[11px] font-medium">{s.title}</span>
+              <span className={`block text-[9px] ${i === current ? 'text-white/80' : 'text-neutral-500'}`}>{s.detail}</span>
+            </span>
+          </span>
+        </li>
+      ))}
+    </ol>
   )
 }
 

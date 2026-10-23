@@ -42,7 +42,30 @@ export const UPCOMING: UpcomingEvaluation[] = [
   { id: 4, date: '2026-10-28', kind: 'Being observed', otherProfessor: 'Professor F', course: 'CS 4348 Operating Systems', section: '001', start: '14:30', end: '15:45', room: 'ECSS 2.306', confirmed: false },
 ]
 
-export type Weekday = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri'
+export type ReportRating = '5' | '4' | '3' | '2' | '1' | 'N/A'
+
+/** A colleague's submitted report on one of your classes, waiting for you to review and sign. */
+export interface ReceivedReport {
+  /** ISO date the observer signed. */
+  observerSignedOn: string
+  /** Rating per criterion id. */
+  ratings: Record<number, ReportRating>
+  strengths: string
+  growth: string
+}
+
+/** Reports on your classes, keyed by the "Being observed" session id in UPCOMING. */
+export const RECEIVED_REPORTS: Record<number, ReceivedReport> = {
+  1: {
+    observerSignedOn: '2026-09-21',
+    ratings: { 1: '4', 2: 'N/A', 5: '4', 6: '3', 7: '5', 8: '4', 9: '5', 10: '5', 11: '4' },
+    strengths:
+      'Clear explanations of tree rotations with well-chosen examples. Questions were answered patiently and tied back to earlier material.',
+    growth: 'Build in a short pair activity mid-lecture so more students get a chance to work through an example themselves.',
+  },
+}
+
+export type Weekday ='Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri'
 
 export interface WeeklyBlock {
   /** Course number, e.g. "CS 3345"; omitted for office hours. */
