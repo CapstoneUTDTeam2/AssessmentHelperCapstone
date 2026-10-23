@@ -274,7 +274,7 @@ CREATE TABLE Observation (
     Signee VARCHAR(255),
     Observer VARCHAR(255),
     ObserverSigned BOOLEAN NOT NULL DEFAULT FALSE,
-    ObserveeSigned BOOLEAN NOT NULL DEFAULT FALSE;
+    ObserveeSigned BOOLEAN NOT NULL DEFAULT FALSE,
     Notes Text,
     ObserveeID INT NOT NULL,
     ObservationTime TIME,
