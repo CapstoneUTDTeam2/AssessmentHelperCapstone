@@ -7,6 +7,8 @@ import {
   WEEKLY_SCHEDULE,
 } from '../data/teacherMock'
 import type { UpcomingEvaluation, UpcomingKind, Weekday } from '../data/teacherMock'
+import { useAlert } from '../hooks/useAlert'
+import { observerListReadyAlert } from '../hooks/useObserverMatching'
 
 const KIND_BADGES: Record<UpcomingKind, string> = {
   'Being observed': 'bg-[#e0791a]',
@@ -101,6 +103,22 @@ function eventsOn(date: string, weekday: Weekday): CalendarEvent[] {
 function TeacherDashboardPage() {
   const thisMonth = TEACHER_TODAY.slice(0, 7)
   const evaluationsThisMonth = UPCOMING.filter((u) => u.date.startsWith(thisMonth)).length
+  const { showAlert } = useAlert()
+
+  // TEMPORARY: previews the "observer list is ready" alert with sample data.
+  // Remove once useObserverListReadyAlert is wired to the logged-in professor.
+  const testObserverListReadyAlert = () =>
+    showAlert(
+      observerListReadyAlert({
+        course_code: 'CS 1337',
+        section_name: '001',
+        observers: [
+          { observer_id: 1, name: 'Sample Observer 1', department: 'Computer Science' },
+          { observer_id: 2, name: 'Sample Observer 2', department: 'Computer Science' },
+          { observer_id: 3, name: 'Sample Observer 3', department: 'Computer Science' },
+        ],
+      }),
+    )
 
   return (
     <main className="min-w-0 flex-1 px-6 py-7">
@@ -115,6 +133,7 @@ function TeacherDashboardPage() {
         <div className="flex gap-2">
           <button
             type="button"
+            onClick={testObserverListReadyAlert}
             className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 transition-colors hover:bg-neutral-50"
           >
             Edit Profile

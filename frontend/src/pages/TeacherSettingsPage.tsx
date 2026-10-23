@@ -4,8 +4,6 @@ import useDraft from '../hooks/useDraft'
 import { TEACHER_PROFILE } from '../data/teacherMock'
 import { DEADLINE_NOTICES, DIGEST_TIMES, HOURS, TEACHER_SETTINGS, TIME_ZONES } from '../data/settingsMock'
 
-const CONTACT_EMAIL = 'professor.a@utdallas.edu'
-
 function ReadOnly({ children }: { children: string }) {
   return <span className="rounded-md bg-neutral-50 px-2.5 py-1.5 text-xs text-neutral-700">{children}</span>
 }
@@ -20,17 +18,14 @@ function TeacherSettingsPage() {
       description: 'How you appear to the Assessment Committee and to observers',
       content: [
         <Notice key="notice" title="Your profile is managed by the Assessment Committee">
-          Name, rank, contact details, hire date, and instructor level are entered by AC members, and course assignments come
-          from CourseBook. Contact a committee member to correct anything here.
+          Your name, rank, and start term are kept up to date by AC members. Course assignments come from CourseBook, and
+          your instructor level is based on the courses you teach. Contact a committee member to correct anything here.
         </Notice>,
         <Row key="name" label="Display name" description="Shown on your profile and evaluation reports">
           <ReadOnly>{TEACHER_PROFILE.name}</ReadOnly>
         </Row>,
         <Row key="title" label="Title" description="Updated by the Assessment Committee">
           <ReadOnly>{`${TEACHER_PROFILE.rank} · Computer Science`}</ReadOnly>
-        </Row>,
-        <Row key="email" label="Contact email" description="Notifications and observer requests go here">
-          <ReadOnly>{CONTACT_EMAIL}</ReadOnly>
         </Row>,
       ],
     },

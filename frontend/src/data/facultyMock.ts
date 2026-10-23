@@ -39,8 +39,11 @@ export interface FacultyMember {
   email: string
   level: FacultyLevel
   courses: string[]
-  completed: number
-  required: number
+  /**
+   * Peer observations received this cycle; null when not known yet. There is no
+   * required count: the client has only set how often an evaluation is due.
+   */
+  observationsReceived: number | null
   status: string
   statusTone: StatusTone
   /** ISO date of the next evaluation, used for sorting. */
@@ -60,8 +63,7 @@ export const FACULTY: FacultyMember[] = [
     email: 'professor.a@utdallas.edu',
     level: 'Associate Prof.',
     courses: ['CS 3345', 'CS 2336', 'CS 4348'],
-    completed: 2,
-    required: 3,
+    observationsReceived: 2,
     status: 'Due Spring 2027',
     statusTone: 'due',
     nextEvaluationDate: '2027-03-01',
@@ -104,8 +106,7 @@ export const FACULTY: FacultyMember[] = [
     email: 'professor.g@utdallas.edu',
     level: 'Assistant Prof.',
     courses: ['CS 1336', 'CS 1337'],
-    completed: 0,
-    required: 2,
+    observationsReceived: 0,
     status: 'Overdue',
     statusTone: 'overdue',
     nextEvaluationDate: '2026-09-14',
@@ -138,8 +139,7 @@ export const FACULTY: FacultyMember[] = [
     email: 'professor.d@utdallas.edu',
     level: 'Full Prof.',
     courses: ['CS 6375', 'CS 4375'],
-    completed: 3,
-    required: 3,
+    observationsReceived: 3,
     status: 'Up to date',
     statusTone: 'ok',
     nextEvaluationDate: '2029-03-01',
@@ -173,8 +173,7 @@ export const FACULTY: FacultyMember[] = [
     email: 'professor.h@utdallas.edu',
     level: 'Assistant Prof.',
     courses: ['CS 1336', 'CS 3305'],
-    completed: 1,
-    required: 2,
+    observationsReceived: 1,
     status: 'Due this semester',
     statusTone: 'due',
     nextEvaluationDate: '2026-10-21',
@@ -207,8 +206,7 @@ export const FACULTY: FacultyMember[] = [
     email: 'professor.l@utdallas.edu',
     level: 'Lecturer',
     courses: ['CS 2305'],
-    completed: 0,
-    required: 1,
+    observationsReceived: 0,
     status: 'Due this semester',
     statusTone: 'due',
     nextEvaluationDate: '2026-09-28',
@@ -240,8 +238,7 @@ export const FACULTY: FacultyMember[] = [
     email: 'professor.c@utdallas.edu',
     level: 'Assistant Prof.',
     courses: ['CS 2305', 'CS 2340'],
-    completed: 1,
-    required: 2,
+    observationsReceived: 1,
     status: 'Due this semester',
     statusTone: 'due',
     nextEvaluationDate: '2026-10-01',
@@ -272,8 +269,7 @@ export const FACULTY: FacultyMember[] = [
     email: 'professor.f@utdallas.edu',
     level: 'Associate Prof.',
     courses: ['CS 3345', 'CS 5343'],
-    completed: 3,
-    required: 3,
+    observationsReceived: 3,
     status: 'Up to date',
     statusTone: 'ok',
     nextEvaluationDate: '2027-11-01',
@@ -308,8 +304,7 @@ export const FACULTY: FacultyMember[] = [
     email: 'professor.b@utdallas.edu',
     level: 'Lecturer',
     courses: ['CS 3341'],
-    completed: 1,
-    required: 1,
+    observationsReceived: 1,
     status: 'Up to date',
     statusTone: 'ok',
     nextEvaluationDate: '2027-09-01',
