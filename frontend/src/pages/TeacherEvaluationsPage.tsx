@@ -1,18 +1,22 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { KeyboardEvent } from 'react'
+import type { EligibleObserver } from '../api/signups'
+import { getProfessorEvaluationStatus } from '../api/evaluationStatus'
+import { DEMO_PROFESSOR_ID, loggedInProfessorId } from '../auth/session'
+import { MockDataBadge, MockDataNote } from '../components/MockData'
 import { SignupActions, SignupStatus } from '../components/SignupActions'
+import { useSignups } from '../hooks/useSignups'
 import SortHeader from '../components/SortHeader'
 import {
   AVAILABLE_OBSERVERS,
   EVALUATION_LOG,
   EVALUATION_REQUIREMENT,
-  MY_LEVEL,
   OBSERVER_REQUESTS,
   TEACHER_PROFILE,
   TEACHER_TODAY,
   UPCOMING,
 } from '../data/teacherMock'
-import type { HistoryEntry, HistoryType, ObserverMatch, UpcomingEvaluation, UpcomingKind } from '../data/teacherMock'
+import type { HistoryEntry, HistoryType, ObserverRequest, UpcomingEvaluation, UpcomingKind } from '../data/teacherMock'
 import { useSortedRows } from '../hooks/useSortedRows'
 import type { Comparators } from '../hooks/useSortedRows'
 import { downloadCsv } from '../utils/csv'
@@ -28,8 +32,6 @@ const HISTORY_BADGES: Record<HistoryType, string> = {
   Observed: 'bg-[#e0791a] text-white',
   Evaluation: 'bg-neutral-100 text-neutral-600',
 }
-
-const AVATARS = { green: 'bg-[#1c4532]', orange: 'bg-[#e0791a]' }
 
 const secondary =
   'rounded-md border border-neutral-200 bg-white px-2.5 py-1.5 text-[10px] whitespace-nowrap text-neutral-900 transition-colors hover:bg-neutral-50'
@@ -55,11 +57,30 @@ type Tab = 'upcoming' | 'history' | 'matching' | 'requests'
 type RequestAnswer = 'accepted' | 'declined'
 
 function TeacherEvaluationsPage({ navigate }: PageProps) {
+  const { signup, cycle } = useSignups()
   const [tab, setTab] = useState<Tab>('upcoming')
   const [confirmedIds, setConfirmedIds] = useState<Set<number>>(() => new Set())
-  // Kept here so requests and answers survive switching tabs.
   const [requested, setRequested] = useState<Set<number>>(() => new Set())
   const [answers, setAnswers] = useState<Record<number, RequestAnswer>>({})
+  const [nextEvaluation, setNextEvaluation] = useState(TEACHER_PROFILE.nextEvaluation)
+  const [cycleLabel, setCycleLabel] = useState(EVALUATION_REQUIREMENT.cycle)
+
+  useEffect(() => {
+    const professorId = loggedInProfessorId() ?? DEMO_PROFESSOR_ID
+    const controller = new AbortController()
+    getProfessorEvaluationStatus(professorId, controller.signal)
+      .then((status) => {
+        setNextEvaluation(
+          status.next_due_year ? `${status.next_due_semester ?? ''} ${status.next_due_year}`.trim() : '—',
+        )
+        setCycleLabel(status.frequency_years === 1 ? '1-year cycle' : `${status.frequency_years ?? 2}-year cycle`)
+      })
+      .catch(() => {
+        /* keep defaults */
+      })
+    return () => controller.abort()
+  }, [])
+
   const upcoming = useMemo(
     () => UPCOMING.map((u) => (confirmedIds.has(u.id) ? { ...u, confirmed: true } : u)),
     [confirmedIds],
@@ -69,7 +90,14 @@ function TeacherEvaluationsPage({ navigate }: PageProps) {
   const awaiting = upcoming.filter((u) => !u.confirmed).length
   const reportsDue = upcoming.filter((u) => u.reportDue).sort((a, b) => a.reportDue!.localeCompare(b.reportDue!))
   const pendingRequests = OBSERVER_REQUESTS.filter((r) => !answers[r.id]).length
-  const req = EVALUATION_REQUIREMENT
+  const req = {
+    ...EVALUATION_REQUIREMENT,
+    received: signup ? 1 : 0,
+    required: 1,
+    nextDue: nextEvaluation,
+    cycle: cycleLabel,
+  }
+  const termLabel = cycle ? `${cycle.semester} ${cycle.year}` : '—'
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: 'upcoming', label: 'Upcoming', count: awaiting },
@@ -87,7 +115,7 @@ function TeacherEvaluationsPage({ navigate }: PageProps) {
           <div>
             <h1 className="text-xl font-semibold text-neutral-900">Evaluations</h1>
             <p className="mt-1 text-xs text-neutral-500">
-              Your evaluation cycle, evaluations you receive, and evaluations you give · Fall 2026
+              Your evaluation cycle, the observation you receive, and observations you give · {termLabel}
             </p>
             <SignupStatus />
           </div>
@@ -99,13 +127,13 @@ function TeacherEvaluationsPage({ navigate }: PageProps) {
         <div className="mt-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
           <StatCard
             label="Next formal evaluation"
-            value={TEACHER_PROFILE.nextEvaluation}
+            value={nextEvaluation}
             detail={`Due ${req.nextDue} · ${req.cycle}`}
           />
           <StatCard
-            label="Evaluations received"
+            label="Observation signup"
             value={`${req.received} of ${req.required}`}
-            detail={`${req.required - req.received} more required this cycle`}
+            detail={signup ? `${signup.course_code}.${signup.section_name} · ${signup.status}` : 'Not signed up this cycle'}
             warn={req.received < req.required}
           />
           <StatCard
@@ -129,6 +157,7 @@ function TeacherEvaluationsPage({ navigate }: PageProps) {
         <div role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`} className="mt-4">
           {tab === 'upcoming' && (
             <UpcomingCard
+              today={TEACHER_TODAY}
               items={upcoming}
               onConfirm={(id) => setConfirmedIds((prev) => new Set(prev).add(id))}
               onOpenReport={(id) => navigate('Observation Report', String(id))}
@@ -136,7 +165,13 @@ function TeacherEvaluationsPage({ navigate }: PageProps) {
           )}
           {tab === 'history' && <HistoryCard />}
           {tab === 'matching' && (
-            <ObserverMatchingCard requested={requested} onRequest={(id) => setRequested((prev) => new Set(prev).add(id))} />
+            <ObserverMatchingCard
+              observers={signup?.observers ?? []}
+              insufficient={Boolean(signup?.insufficient)}
+              signupStatus={signup?.status ?? null}
+              requested={requested}
+              onRequest={(id) => setRequested((prev) => new Set(prev).add(id))}
+            />
           )}
           {tab === 'requests' && (
             <ObservationRequestsCard answers={answers} onAnswer={(id, a) => setAnswers((prev) => ({ ...prev, [id]: a }))} />
@@ -233,10 +268,12 @@ function StatCard({
 }
 
 function UpcomingCard({
+  today,
   items,
   onConfirm,
   onOpenReport,
 }: {
+  today: string
   items: UpcomingEvaluation[]
   onConfirm: (id: number) => void
   onOpenReport: (id: number) => void
@@ -245,22 +282,25 @@ function UpcomingCard({
   const sorted = useMemo(
     () =>
       items
-        .filter((u) => u.date >= TEACHER_TODAY)
+        .filter((u) => u.date >= today)
         .sort(
           (a, b) =>
             (sort === 'type' ? a.kind.localeCompare(b.kind) : 0) ||
             a.date.localeCompare(b.date) ||
             a.start.localeCompare(b.start),
         ),
-    [items, sort],
+    [items, sort, today],
   )
 
   return (
     <section className="min-w-0 rounded-lg border border-neutral-200 bg-white p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-neutral-900">Upcoming</h2>
-          <p className="mt-0.5 text-[10px] text-neutral-500">Confirm, reschedule, or prepare for each session</p>
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
+            Upcoming
+            <MockDataBadge />
+          </h2>
+          <MockDataNote>No observation-request API yet. These sessions are placeholders.</MockDataNote>
         </div>
         <div className="flex shrink-0 items-center gap-3 text-[11px]">
           <label className="flex items-center gap-1 text-neutral-500">
@@ -310,10 +350,7 @@ function UpcomingRow({
   const details = [
     `${courseNumber} Sec ${item.section}`,
     `${format(item.date, { weekday: 'short' })} ${item.start}–${item.end}`,
-    item.room,
-  ]
-    .filter(Boolean)
-    .join(' · ')
+  ].join(' · ')
 
   const status = item.reportDue
     ? { text: `Report due ${format(item.reportDue, { month: 'short', day: 'numeric' })}`, color: 'text-[#b3261e]', dot: 'bg-[#b3261e]' }
@@ -340,31 +377,15 @@ function UpcomingRow({
       </div>
       <div className="flex shrink-0 gap-1.5">
         {!item.confirmed ? (
-          <>
-            <button type="button" onClick={onConfirm} className={primary}>
-              Confirm
-            </button>
-            <button type="button" className={secondary}>
-              Propose new time
-            </button>
-          </>
+          <button type="button" onClick={onConfirm} className={primary}>
+            Confirm
+          </button>
         ) : (
-          <>
-            {observed ? (
-              <button type="button" className={secondary}>
-                View rubric
-              </button>
-            ) : (
-              <button type="button" onClick={onOpenReport} className={secondary}>
-                Evaluation form
-              </button>
-            )}
-            {!item.reportDue && (
-              <button type="button" className={secondary}>
-                Reschedule
-              </button>
-            )}
-          </>
+          !observed && (
+            <button type="button" onClick={onOpenReport} className={secondary}>
+              Evaluation form
+            </button>
+          )
         )}
       </div>
     </li>
@@ -385,8 +406,11 @@ function HistoryCard() {
     <section className="min-w-0 rounded-lg border border-neutral-200 bg-white p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-neutral-900">History</h2>
-          <p className="mt-0.5 text-[10px] text-neutral-500">Completed peer and formal evaluations</p>
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
+            History
+            <MockDataBadge />
+          </h2>
+          <MockDataNote>Past observations have no API yet.</MockDataNote>
         </div>
         <button type="button" onClick={exportHistory} className="shrink-0 text-[11px] text-[#e0791a] hover:underline">
           Export →
@@ -431,55 +455,74 @@ function HistoryCard() {
   )
 }
 
-type AvailableSort = 'level' | 'available'
-
-function ObserverMatchingCard({ requested, onRequest }: { requested: Set<number>; onRequest: (id: number) => void }) {
-  const [availableSort, setAvailableSort] = useState<AvailableSort>('available')
-
-  const available = useMemo(
-    () =>
-      [...AVAILABLE_OBSERVERS].sort(
-        (a, b) =>
-          (availableSort === 'level' ? a.level - MY_LEVEL - (b.level - MY_LEVEL) : 0) ||
-          a.availableFrom.localeCompare(b.availableFrom),
-      ),
-    [availableSort],
-  )
+function ObserverMatchingCard({
+  observers,
+  insufficient,
+  signupStatus,
+  requested,
+  onRequest,
+}: {
+  observers: EligibleObserver[]
+  insufficient: boolean
+  signupStatus: string | null
+  requested: Set<number>
+  onRequest: (id: number) => void
+}) {
+  const live = observers.length > 0
+  const mockObservers = AVAILABLE_OBSERVERS.map((o) => ({
+    observer_id: o.id,
+    name: o.name,
+    department: o.teaching,
+  }))
+  const shown = live ? observers : mockObservers
 
   return (
     <section className="min-w-0 rounded-lg border border-neutral-200 bg-white p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-neutral-900">Observer Matching</h2>
-          <p className="mt-0.5 text-[10px] text-neutral-500">
-            Observers above your level ({MY_LEVEL}s) who can observe you · request one as your observer
-          </p>
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
+            Observer Matching
+            {!live && <MockDataBadge />}
+          </h2>
+          {live ? (
+            <p className="mt-0.5 text-[10px] text-neutral-500">
+              Up to 5 colleagues in your department who teach the same course level and are free at this class time
+              {signupStatus ? ` · signup ${signupStatus}` : ''}
+            </p>
+          ) : (
+            <MockDataNote>
+              Eligibility list is empty until signup/observer-list APIs return names. Showing placeholders.
+            </MockDataNote>
+          )}
         </div>
-        <label className="flex shrink-0 items-center gap-1 text-[11px] text-neutral-500">
-          Sort:
-          <select
-            value={availableSort}
-            onChange={(e) => setAvailableSort(e.target.value as AvailableSort)}
-            className="bg-transparent text-neutral-900 focus:outline-none"
-          >
-            <option value="available">Soonest available</option>
-            <option value="level">Nearest level</option>
-          </select>
-        </label>
       </div>
 
+      {insufficient && live && (
+        <p className="mt-3 rounded-md bg-[#fdf1e6] px-3 py-2 text-[11px] text-[#c4561a]">
+          Fewer than 5 eligible observers — Assessment Committee sees this as an alert.
+        </p>
+      )}
+
       <ul className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-        {available.map((o) => {
-          const sent = requested.has(o.id)
+        {shown.map((o) => {
+          const sent = requested.has(o.observer_id)
           return (
-            <li key={o.id} className="rounded-md bg-neutral-50 p-2.5">
-              <MatchHeader match={o} />
+            <li key={o.observer_id} className="rounded-md bg-neutral-50 p-2.5">
+              <div className="flex items-start gap-2">
+                <span className="h-6 w-6 shrink-0 rounded-full bg-[#1c4532]" aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-semibold text-neutral-900">{o.name}</p>
+                  <p className="truncate text-[9px] text-neutral-500">{o.department}</p>
+                </div>
+              </div>
               <div className="mt-2 flex items-center justify-between">
-                <span className="text-[9px] text-neutral-500">Available · {o.available}</span>
+                <span className="text-[9px] text-neutral-500">
+                  {live ? 'Same level · same department' : 'Placeholder observer'}
+                </span>
                 <button
                   type="button"
                   disabled={sent}
-                  onClick={() => onRequest(o.id)}
+                  onClick={() => onRequest(o.observer_id)}
                   className={`${secondary} disabled:text-neutral-400 disabled:hover:bg-white`}
                 >
                   {sent ? 'Requested' : 'Request'}
@@ -500,20 +543,17 @@ function ObservationRequestsCard({
   answers: Record<number, RequestAnswer>
   onAnswer: (id: number, answer: RequestAnswer) => void
 }) {
-  const requests = [...OBSERVER_REQUESTS].sort((a, b) => a.due.localeCompare(b.due))
+  const requests: ObserverRequest[] = [...OBSERVER_REQUESTS].sort((a, b) => a.due.localeCompare(b.due))
 
   return (
     <section className="min-w-0 rounded-lg border border-neutral-200 bg-white p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-neutral-900">Observation Requests</h2>
-          <p className="mt-0.5 text-[10px] text-neutral-500">Colleagues below your level who asked you to observe them</p>
-        </div>
-        <span className="shrink-0 text-[11px] text-neutral-500">
-          Sort: <span className="text-neutral-900">Due date</span>
-        </span>
+      <div>
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
+          Observation Requests
+          <MockDataBadge />
+        </h2>
+        <MockDataNote>Incoming requests have no API yet (observer-request stubs).</MockDataNote>
       </div>
-
       <ul className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
         {requests.map((r) => {
           const answer = answers[r.id]
@@ -523,7 +563,10 @@ function ObservationRequestsCard({
               key={r.id}
               className={`rounded-md border p-2.5 ${answer ? 'border-neutral-200 bg-neutral-50' : 'border-[#e0791a] bg-[#fdf1e6]'}`}
             >
-              <MatchHeader match={r} />
+              <p className="text-[11px] font-semibold text-neutral-900">
+                {r.name} · {r.rank}
+              </p>
+              <p className="truncate text-[9px] text-neutral-500">{r.teaching}</p>
               <div className="mt-2 flex items-center justify-between gap-2">
                 <span className={`text-[9px] ${overdue && !answer ? 'text-[#b3261e]' : 'text-neutral-500'}`}>
                   Requested you · {overdue ? 'overdue' : `due ${format(r.due, { month: 'short', day: 'numeric' })}`}
@@ -546,24 +589,8 @@ function ObservationRequestsCard({
             </li>
           )
         })}
-        {requests.length === 0 && <li className="py-6 text-center text-[11px] text-neutral-500">No requests right now.</li>}
       </ul>
     </section>
-  )
-}
-
-function MatchHeader({ match }: { match: ObserverMatch }) {
-  return (
-    <div className="flex items-start gap-2">
-      <span className={`h-6 w-6 shrink-0 rounded-full ${AVATARS[match.avatar]}`} aria-hidden="true" />
-      <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-semibold text-neutral-900">
-          {match.name} · {match.rank}
-        </p>
-        <p className="truncate text-[9px] text-neutral-500">{match.teaching}</p>
-      </div>
-      <span className="shrink-0 rounded-full bg-[#3f8a55] px-2 py-0.5 text-[9px] font-medium text-white">{match.level}s</span>
-    </div>
   )
 }
 

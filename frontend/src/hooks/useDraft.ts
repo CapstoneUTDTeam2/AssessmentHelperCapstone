@@ -11,5 +11,9 @@ export default function useDraft<T extends object>(initial: T) {
     dirty: JSON.stringify(saved) !== JSON.stringify(draft),
     save: () => setSaved(draft),
     discard: () => setDraft(saved),
+    replace: (next: T) => {
+      setSaved(next)
+      setDraft(next)
+    },
   }
 }

@@ -9,6 +9,8 @@ export interface User {
   name: string
   title: string
   role: Role
+  /** Seed professor row the faculty demo account maps to (Alice Johnson). */
+  professorId?: number
 }
 
 interface DemoAccount extends User {
@@ -26,9 +28,10 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
   {
     email: 'professor.a@utdallas.edu',
     password: 'faculty1234',
-    name: 'Professor A',
+    name: 'Alice Johnson',
     title: 'Faculty',
     role: 'faculty',
+    professorId: 1,
   },
 ]
 
@@ -55,6 +58,6 @@ export function authenticate(email: string, password: string, role: Role): AuthR
           : 'This account does not have Assessment Coordinator access.',
     }
   }
-  const { email: userEmail, name, title, role: userRole } = account
-  return { ok: true, user: { email: userEmail, name, title, role: userRole } }
+  const { email: userEmail, name, title, role: userRole, professorId } = account
+  return { ok: true, user: { email: userEmail, name, title, role: userRole, professorId } }
 }

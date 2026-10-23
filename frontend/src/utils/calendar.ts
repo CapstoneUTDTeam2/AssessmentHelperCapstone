@@ -43,6 +43,19 @@ export function formatTime(value: string) {
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`
 }
 
+const WEEKDAY_FROM_LETTER: Record<string, 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri'> = {
+  M: 'Mon',
+  T: 'Tue',
+  W: 'Wed',
+  R: 'Thu',
+  F: 'Fri',
+}
+
+/** "MW" / "TR" → ["Mon", "Wed"] / ["Tue", "Thu"]. */
+export function weekdaysFromMeetingDays(days: string) {
+  return [...days].map((letter) => WEEKDAY_FROM_LETTER[letter]).filter((day): day is 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' => Boolean(day))
+}
+
 export function formatLongDate(iso: string) {
   return fromIso(iso).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' })
 }

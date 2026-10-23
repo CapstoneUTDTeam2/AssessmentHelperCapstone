@@ -1,5 +1,10 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
+import { getObserveeSignupOrNull } from '../api/signups'
+import type { EligibleObserver } from '../api/signups'
+import { MockDataBadge, MockDataNote } from '../components/MockData'
 import { getFaculty } from '../api/faculty'
+import { FACULTY } from '../data/facultyMock'
+import { downloadCsv } from '../utils/csv'
 import type { CurrentTerm } from '../api/evaluationStatus'
 import { LEVEL_COLORS } from '../theme'
 import type {
@@ -7,7 +12,6 @@ import type {
   EventKind,
   FacultyLevel,
   FacultyMember,
-  ObserverMatch,
   StatusTone,
 } from '../data/facultyMock'
 
@@ -146,20 +150,19 @@ function FacultyPage() {
                 : 'Faculty data unavailable'}
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 transition-colors hover:bg-neutral-50"
-          >
-            Export List
-          </button>
-          <button
-            type="button"
-            className="rounded-md bg-[#e0791a] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[#c96a12]"
-          >
-            + Add Faculty
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() =>
+            downloadCsv(
+              'faculty.csv',
+              ['Name', 'Level', 'Courses', 'Status', 'Next evaluation'],
+              rows.map((f) => [f.name, f.level, f.courses.join('; '), f.status, f.details.nextEvaluation]),
+            )
+          }
+          className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 transition-colors hover:bg-neutral-50"
+        >
+          Export List
+        </button>
       </header>
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
@@ -257,7 +260,6 @@ function FacultyPage() {
                   </th>
                 )
               })}
-              <th className="w-10" aria-label="Actions" />
             </tr>
           </thead>
           <tbody>
@@ -332,15 +334,6 @@ function FacultyPage() {
                         {member.status}
                       </span>
                     </td>
-                    <td className="pr-3">
-                      <button
-                        type="button"
-                        aria-label={`More actions for ${member.name}`}
-                        className="rounded px-1.5 text-neutral-500 hover:bg-neutral-100"
-                      >
-                        ···
-                      </button>
-                    </td>
                   </tr>
                   {isOpen && (
                     <tr className="border-t border-neutral-100 bg-neutral-50">
@@ -374,58 +367,61 @@ function FacultyPage() {
 }
 
 function FacultyDetailsPanel({ member }: { member: FacultyMember }) {
+  const mockDetails = FACULTY.find((row) => row.id === member.id)?.details
   const { details } = member
+  const past = details.past.length > 0 ? details.past : mockDetails?.past ?? []
+  const upcoming = details.upcoming.length > 0 ? details.upcoming : mockDetails?.upcoming ?? []
+  const pastIsMock = details.past.length === 0 && past.length > 0
+  const [observers, setObservers] = useState<EligibleObserver[] | null>(null)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    getObserveeSignupOrNull(member.id, controller.signal)
+      .then((signup) => setObservers(signup?.observers ?? []))
+      .catch(() => setObservers([]))
+    return () => controller.abort()
+  }, [member.id])
+
   return (
     <div className="grid gap-3 lg:grid-cols-[1.25fr_0.85fr_1fr]">
       <section className="rounded-lg border border-neutral-200 bg-white p-3">
-        <h3 className="text-xs font-semibold text-neutral-900">Evaluations</h3>
-        <EventList title="Past" events={details.past} />
-        <EventList title="Upcoming" events={details.upcoming} />
+        <h3 className="flex items-center gap-1.5 text-xs font-semibold text-neutral-900">
+          Evaluations
+          {pastIsMock && <MockDataBadge />}
+        </h3>
+        {pastIsMock && <MockDataNote>Observation history has no API yet.</MockDataNote>}
+        <EventList title="Past" events={past} />
+        <EventList title="Upcoming" events={upcoming} />
       </section>
 
       <section className="rounded-lg border border-neutral-200 bg-white p-3">
         <h3 className="text-xs font-semibold text-neutral-900">Profile &amp; Evaluation</h3>
         <dl className="mt-3 space-y-2.5">
-          <ProfileField label="Hire level" value={details.hireLevel} />
+          <ProfileField label="Rank" value={details.hireLevel} />
           <ProfileField label="Evaluation cycle" value={details.cycle} />
           <ProfileField label="Last evaluation" value={details.lastEvaluation} />
           <ProfileField label="Next evaluation" value={details.nextEvaluation} highlight />
-          <div>
-            <dt className="text-[9px] text-neutral-500">Instructor level</dt>
-            <dd className="mt-1 flex flex-col items-start gap-1">
-              {details.instructorLevels.map((tag) => (
-                <span key={tag} className="rounded border border-[#e0791a] px-1.5 py-px text-[9px] text-[#e0791a]">
-                  {tag}
-                </span>
-              ))}
-            </dd>
-          </div>
+          {details.instructorLevels.length > 0 && (
+            <div>
+              <dt className="text-[9px] text-neutral-500">Instructor level</dt>
+              <dd className="mt-1 flex flex-col items-start gap-1">
+                {details.instructorLevels.map((tag) => (
+                  <span key={tag} className="rounded border border-[#e0791a] px-1.5 py-px text-[9px] text-[#e0791a]">
+                    {tag}
+                  </span>
+                ))}
+              </dd>
+            </div>
+          )}
         </dl>
       </section>
 
       <section className="flex flex-col rounded-lg border border-neutral-200 bg-white p-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold text-neutral-900">Potential Observers</h3>
-          <span className="text-[9px] text-neutral-500">
-            Sort: <span className="text-neutral-800">Level</span>
-          </span>
+          <h3 className="text-xs font-semibold text-neutral-900">Eligible Observers</h3>
+          <span className="text-[9px] text-neutral-500">Same department · same course level</span>
         </div>
-        <ObserverList title={`Can observe ${member.name}`} observers={details.canObserveThem} />
-        <ObserverList title={`${member.name} can observe`} observers={details.theyCanObserve} />
-        <div className="mt-auto flex gap-2 pt-3">
-          <button
-            type="button"
-            className="flex-1 rounded-md bg-[#e0791a] px-3 py-2 text-[11px] font-medium text-white transition-colors hover:bg-[#c96a12]"
-          >
-            Assign Evaluation
-          </button>
-          <button
-            type="button"
-            className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-[11px] text-neutral-900 transition-colors hover:bg-neutral-50"
-          >
-            Full profile
-          </button>
-        </div>
+        <ApiObserverList observers={observers} />
       </section>
     </div>
   )
@@ -467,31 +463,29 @@ function ProfileField({ label, value, highlight }: { label: string; value: strin
   )
 }
 
-function ObserverList({ title, observers }: { title: string; observers: ObserverMatch[] }) {
+function ApiObserverList({ observers }: { observers: EligibleObserver[] | null }) {
+  if (observers === null) {
+    return <p className="mt-2.5 text-[10px] text-neutral-400">Loading observers…</p>
+  }
+  if (observers.length === 0) {
+    return (
+      <p className="mt-2.5 text-[10px] text-neutral-400">
+        No signup this cycle, or no eligible observers (same department, same course level, free at class time).
+      </p>
+    )
+  }
   return (
-    <div className="mt-2.5">
-      <h4 className="text-[9px] font-semibold tracking-wide text-neutral-500 uppercase">{title}</h4>
-      {observers.length === 0 ? (
-        <p className="mt-1.5 text-[10px] text-neutral-400">No matches</p>
-      ) : (
-        <ul className="mt-1.5 space-y-1.5">
-          {observers.map((obs) => (
-            <li key={obs.name} className="flex items-center gap-2 rounded-md bg-neutral-50 px-2 py-1.5">
-              <span className="h-5 w-5 shrink-0 rounded-full bg-[#1c4532]" aria-hidden="true" />
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] text-neutral-900">
-                  {obs.name} · {obs.rank}
-                </p>
-                <p className="truncate text-[9px] text-neutral-500">{obs.detail}</p>
-              </div>
-              <span className="shrink-0 rounded-full bg-[#3f8a55] px-2 py-0.5 text-[9px] font-medium text-white">
-                {obs.courseLevel}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    <ul className="mt-2.5 space-y-1.5">
+      {observers.map((obs) => (
+        <li key={obs.observer_id} className="flex items-center gap-2 rounded-md bg-neutral-50 px-2 py-1.5">
+          <span className="h-5 w-5 shrink-0 rounded-full bg-[#1c4532]" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] text-neutral-900">{obs.name}</p>
+            <p className="truncate text-[9px] text-neutral-500">{obs.department}</p>
+          </div>
+        </li>
+      ))}
+    </ul>
   )
 }
 

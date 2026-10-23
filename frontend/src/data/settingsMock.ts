@@ -23,8 +23,8 @@ export const FACULTY_FIELDS = ['Hire date', 'Program start date', 'Rank', 'Instr
 const both: Channels = { email: true, inApp: true }
 
 export const AC_SETTINGS = {
-  // Evaluation Policy
-  assistantCycle: 'Every semester (Fall & Spring)' as CycleFrequency,
+  // Evaluation Policy — Assistant yearly, Associate/Full every 2 years. Lecturer is unknown.
+  assistantCycle: 'Every year' as CycleFrequency,
   associateCycle: 'Every 2 years' as CycleFrequency,
   fullCycle: 'Every 2 years' as CycleFrequency,
   lecturerCycle: 'Every 2 years' as CycleFrequency,
@@ -35,8 +35,8 @@ export const AC_SETTINGS = {
   eligibilityBasis: 'Hire date' as 'Hire date' | 'Program start',
   levelsInScope: ['1000s', '2000s', '3000s', '4000s'],
 
-  // Observer Matching Rules
-  minRecommendations: 3,
+  // Observer Matching Rules — process: 5 names, same department, same level.
+  minRecommendations: 5,
   maxRecommendations: 5,
   levelAssignment: 'Highest course taught' as (typeof LEVEL_ASSIGNMENTS)[number],
   balanceLoad: true,

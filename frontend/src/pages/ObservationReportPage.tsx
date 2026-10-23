@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { MockDataNote } from '../components/MockData'
 import { CRITERIA, CURRENT_CYCLE, RATING_SCALE, SECTIONS } from '../data/criteriaMock'
 import type { Criterion } from '../data/criteriaMock'
 import { TEACHER_PROFILE, UPCOMING } from '../data/teacherMock'
@@ -162,8 +163,8 @@ function ReportForm({ session, onBack }: { session: UpcomingEvaluation; onBack: 
           <p className="mt-1 text-xs text-neutral-500">
             Observing {session.otherProfessor} · {session.course.split(' ').slice(0, 2).join(' ')} Sec {session.section} ·{' '}
             {longDate(session.date)} · {formatTime(session.start)}–{formatTime(session.end)}
-            {session.room && ` · ${session.room}`}
           </p>
+          <MockDataNote>Report upload/sign-off has no API yet. This form is a placeholder.</MockDataNote>
         </div>
         {!locked && (
           <div className="flex items-center gap-2">
