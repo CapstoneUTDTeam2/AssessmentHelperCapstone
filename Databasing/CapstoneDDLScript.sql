@@ -13,15 +13,6 @@ BEGIN
     END LOOP;
 END $$;
 
---CREATE EXTENSION IF NOT EXISTS citext;
-
---CREATE TABLE Users(
-    --for the time being im going to comment this UTD email bit
-    --UTDallasEmail CITEXT UNIQUE NOT NULL,
-    --UTDallasID VARCHAR(9) UNIQUE NOT NULL, if we can't get the email
-    --password_hash TEXT NOT NULL
---);
-
 CREATE TABLE Department (
     DepartmentID INT PRIMARY KEY,
     DepartmentName VARCHAR(50) NOT NULL
