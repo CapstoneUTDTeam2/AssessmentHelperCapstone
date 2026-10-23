@@ -323,10 +323,12 @@ def get_observee_signup(
             text(EXISTING_SIGNUPS_SQL),
             {"cycle_id": cycle["cycleid"], "professor_id": professor_id},
         ).mappings().all()
-        if rows and has_saved_list(rows[0]["status"]):
+        if rows and rows[0]["status"] != "Pending":
             # After observer selection, show the saved list so it matches what the committee sent.
             saved = saved_observers(conn, rows[0]["signupid"])
-            return {**_signup_payload(rows[0]), "observers": saved, "insufficient": not saved}
+            # Accepted and later signups already have an observer, so they aren't short on observers.
+            insufficient = not saved if has_saved_list(rows[0]["status"]) else False
+            return {**_signup_payload(rows[0]), "observers": saved, "insufficient": insufficient}
     if not rows:
         raise HTTPException(status_code=404, detail="No signup for this cycle")
     match = observers_for_signup_id(rows[0]["signupid"])
