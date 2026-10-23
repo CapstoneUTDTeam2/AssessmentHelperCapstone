@@ -95,11 +95,17 @@ function MyProfilePage() {
           })),
         )
         if (status) {
-          setCycle(status.frequency_years === 1 ? 'Every year' : `Every ${status.frequency_years ?? 2} years`)
+          setCycle(
+            status.frequency_years === 1
+              ? 'Every year'
+              : status.frequency_years
+                ? `Every ${status.frequency_years} years`
+                : '—',
+          )
           setNextEvaluation(
             status.next_due_year ? `${status.next_due_semester ?? ''} ${status.next_due_year}`.trim() : '—',
           )
-          if (status.current_level) setHireLevel(status.current_level)
+          setHireLevel(status.current_level ?? '—')
           setLastEvaluation(status.last_evaluation_date ? formatDay(status.last_evaluation_date) : 'Never')
         }
       })

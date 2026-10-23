@@ -2,7 +2,7 @@ import type { User } from './demoAccounts'
 
 const SESSION_KEY = 'assessment-helper-user'
 
-/** Seed professor the faculty demo account maps to (Alice Johnson). */
+/** Seed Alice Johnson. Used only when a faculty session has no professorId. */
 export const DEMO_PROFESSOR_ID = 1
 
 export function loggedInUser(): User | null {

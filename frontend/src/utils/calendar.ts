@@ -5,11 +5,11 @@ export const toIso = (d: Date) => d.toISOString().slice(0, 10)
 export const fromIso = (iso: string) => new Date(`${iso}T00:00:00Z`)
 export const isWeekend = (d: Date) => d.getUTCDay() === 0 || d.getUTCDay() === 6
 
-/** CourseBook meeting-day letters, indexed by getUTCDay(). */
-const DAY_LETTERS = ['U', 'M', 'T', 'W', 'R', 'F', 'S']
+const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
 
-/** True when a section meeting on `days` (e.g. "MW", "TR") meets on this date. */
-export const meetsOn = (days: string, d: Date) => days.includes(DAY_LETTERS[d.getUTCDay()])
+/** True when a section meeting on `days` ("MW", "TR", or "Tuesday,Thursday") meets on this date. */
+export const meetsOn = (days: string, d: Date) =>
+  weekdaysFromMeetingDays(days).includes(WEEKDAY_LABELS[d.getUTCDay()] as 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri')
 
 export function businessDays(from: string, to: string) {
   const days: string[] = []
@@ -43,17 +43,36 @@ export function formatTime(value: string) {
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`
 }
 
-const WEEKDAY_FROM_LETTER: Record<string, 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri'> = {
+const WEEKDAY_FROM_TOKEN: Record<string, 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri'> = {
   M: 'Mon',
   T: 'Tue',
   W: 'Wed',
   R: 'Thu',
   F: 'Fri',
+  MON: 'Mon',
+  TUE: 'Tue',
+  TUES: 'Tue',
+  WED: 'Wed',
+  THU: 'Thu',
+  THUR: 'Thu',
+  THURS: 'Thu',
+  FRI: 'Fri',
+  MONDAY: 'Mon',
+  TUESDAY: 'Tue',
+  WEDNESDAY: 'Wed',
+  THURSDAY: 'Thu',
+  FRIDAY: 'Fri',
 }
 
-/** "MW" / "TR" → ["Mon", "Wed"] / ["Tue", "Thu"]. */
+/** "MW", "TR", or CourseBook "Tuesday,Thursday" → weekday labels. */
 export function weekdaysFromMeetingDays(days: string) {
-  return [...days].map((letter) => WEEKDAY_FROM_LETTER[letter]).filter((day): day is 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' => Boolean(day))
+  const tokens = /[A-Za-z]{2,}/.test(days) ? days.split(/[^A-Za-z]+/).filter(Boolean) : [...days]
+  const seen = new Set<'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri'>()
+  for (const token of tokens) {
+    const day = WEEKDAY_FROM_TOKEN[token.toUpperCase()]
+    if (day) seen.add(day)
+  }
+  return [...seen]
 }
 
 export function formatLongDate(iso: string) {

@@ -2,13 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { getProfessorEvaluationStatus } from '../api/evaluationStatus'
 import { DEMO_PROFESSOR_ID, loggedInProfessorId } from '../auth/session'
 import { SignupActions, SignupStatus } from '../components/SignupActions'
-import {
-  TEACHER_PROFILE,
-  TEACHER_TODAY,
-  UPCOMING,
-  WEEKLY_SCHEDULE,
-} from '../data/teacherMock'
-import type { UpcomingEvaluation, UpcomingKind, Weekday } from '../data/teacherMock'
+import { useSignups } from '../hooks/useSignups'
+import { MockDataBadge, MockDataNote } from '../components/MockData'
+import { TEACHER_PROFILE, TEACHER_TODAY, UPCOMING } from '../data/teacherMock'
+import type { UpcomingEvaluation, UpcomingKind, Weekday, WeeklyBlock } from '../data/teacherMock'
+import { weekdaysFromMeetingDays } from '../utils/calendar'
 import { useAlert } from '../hooks/useAlert'
 import { observerListReadyAlert } from '../hooks/useObserverMatching'
 
@@ -99,9 +97,16 @@ function eventsOn(date: string, weekday: Weekday, schedule: WeeklyBlock[], upcom
 }
 
 function TeacherDashboardPage() {
-  const thisMonth = TEACHER_TODAY.slice(0, 7)
-  const evaluationsThisMonth = UPCOMING.filter((u) => u.date.startsWith(thisMonth)).length
+  const { classes, cycle } = useSignups()
+  const today = cycle?.today ?? new Date().toISOString().slice(0, 10)
   const { showAlert } = useAlert()
+  const [profile, setProfile] = useState({
+    name: TEACHER_PROFILE.name,
+    cycle: TEACHER_PROFILE.evaluationCycle,
+    nextEvaluation: TEACHER_PROFILE.nextEvaluation,
+    status: '',
+    rank: TEACHER_PROFILE.rank,
+  })
 
   // TEMPORARY: previews the "observer list is ready" alert with sample data.
   // Remove once useObserverListReadyAlert is wired to the logged-in professor.
@@ -117,6 +122,41 @@ function TeacherDashboardPage() {
         ],
       }),
     )
+
+  useEffect(() => {
+    const professorId = loggedInProfessorId() ?? DEMO_PROFESSOR_ID
+    const controller = new AbortController()
+    getProfessorEvaluationStatus(professorId, controller.signal)
+      .then((status) => {
+        setProfile({
+          name: status.name,
+          cycle:
+            status.frequency_years === 1
+              ? 'Every year'
+              : status.frequency_years
+                ? `Every ${status.frequency_years} years`
+                : '—',
+          nextEvaluation: status.next_due_year ? `${status.next_due_semester ?? ''} ${status.next_due_year}`.trim() : '—',
+          status: status.status,
+          rank: status.current_level ?? '—',
+        })
+      })
+      .catch(() => {
+        /* keep demo labels */
+      })
+    return () => controller.abort()
+  }, [])
+
+  const schedule: WeeklyBlock[] = classes.map((row) => ({
+    course: row.course_code,
+    courseName: `${row.course_code} ${row.course_name}`,
+    days: weekdaysFromMeetingDays(row.meeting_days),
+    start: row.start_time.slice(0, 5),
+    end: row.end_time.slice(0, 5),
+    room: null,
+  }))
+  const upcoming: UpcomingEvaluation[] = UPCOMING
+  const termLabel = cycle ? `${cycle.semester} ${cycle.year}` : '—'
 
   return (
     <main className="min-w-0 flex-1 px-6 py-7">

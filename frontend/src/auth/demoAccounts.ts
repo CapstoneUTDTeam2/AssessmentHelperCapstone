@@ -9,7 +9,7 @@ export interface User {
   name: string
   title: string
   role: Role
-  /** Seed professor row the faculty demo account maps to (Alice Johnson). */
+  /** Professors.ProfessorID the faculty session loads. Coordinator sessions omit this. */
   professorId?: number
 }
 

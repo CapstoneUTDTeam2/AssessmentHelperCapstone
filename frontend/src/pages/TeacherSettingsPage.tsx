@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react'
+import { getProfessorEvaluationStatus } from '../api/evaluationStatus'
+import { DEMO_PROFESSOR_ID, loggedInProfessorId, loggedInUser } from '../auth/session'
 import { Notice, Row, Segmented, Select, SettingsLayout, Toggle } from '../components/settings'
 import type { SettingsSection } from '../components/settings'
 import useDraft from '../hooks/useDraft'
-import { TEACHER_PROFILE } from '../data/teacherMock'
-import { DEADLINE_NOTICES, DIGEST_TIMES, HOURS, TEACHER_SETTINGS, TIME_ZONES } from '../data/settingsMock'
+import { HOURS, TEACHER_SETTINGS, TIME_ZONES } from '../data/settingsMock'
 
 function ReadOnly({ children }: { children: string }) {
   return <span className="rounded-md bg-neutral-50 px-2.5 py-1.5 text-xs text-neutral-700">{children}</span>
@@ -10,6 +12,23 @@ function ReadOnly({ children }: { children: string }) {
 
 function TeacherSettingsPage() {
   const { draft: s, set, dirty, save, discard } = useDraft(TEACHER_SETTINGS)
+  const session = loggedInUser()
+  const [name, setName] = useState(session?.name ?? '—')
+  const [rank, setRank] = useState('—')
+
+  useEffect(() => {
+    const professorId = loggedInProfessorId() ?? DEMO_PROFESSOR_ID
+    const controller = new AbortController()
+    getProfessorEvaluationStatus(professorId, controller.signal)
+      .then((status) => {
+        setName(status.name)
+        setRank(status.current_level ?? '—')
+      })
+      .catch(() => {
+        /* keep the session name */
+      })
+    return () => controller.abort()
+  }, [])
 
   const sections: SettingsSection[] = [
     {
@@ -22,10 +41,10 @@ function TeacherSettingsPage() {
           your instructor level is based on the courses you teach. Contact a committee member to correct anything here.
         </Notice>,
         <Row key="name" label="Display name" description="Professors.ProfessorName">
-          <ReadOnly>{TEACHER_PROFILE.name}</ReadOnly>
+          <ReadOnly>{name}</ReadOnly>
         </Row>,
         <Row key="title" label="Rank" description="Professors.CurrentLevel">
-          <ReadOnly>{`${TEACHER_PROFILE.rank} · Computer Science`}</ReadOnly>
+          <ReadOnly>{rank}</ReadOnly>
         </Row>,
       ],
     },
