@@ -68,8 +68,6 @@ export const WEEKLY_SCHEDULE: WeeklyBlock[] = [
 /** Contact and appointment details shown on the My Profile page. */
 export const PROFILE_DETAILS = {
   contact: [
-    ['UTD ID', 'MXA210045'],
-    ['Email', 'professor.a@utdallas.edu'],
     ['Office', 'ECSS 4.702'],
     ['Office hours', 'Tue 9–10 AM · Fri 11 AM–12 PM'],
     ['Department', 'Computer Science'],
@@ -77,12 +75,12 @@ export const PROFILE_DETAILS = {
   ],
   appointment: [
     ['Hire level', 'Associate Professor'],
-    ['Hire date', 'Aug 15, 2019'],
+    ['Start term', 'Fall 2019'],
     ['Tenure status', 'Tenured (May 2025)'],
     ['Evaluation cycle', 'Every 2 years'],
     ['Last evaluation', 'Mar 12, 2025 · Meets expectations'],
     ['Next evaluation', 'Spring 2027 · due Mar 2027'],
-    ['Evaluations required', '2 per cycle (1 remaining)'],
+    ['Observations this cycle', '1 received'],
     ['Can be observed by', 'Associate or Full Professors'],
     ['Can observe', 'Assistant Professors, Lecturers'],
   ],
@@ -141,10 +139,16 @@ export const EVALUATION_HISTORY: PastEvaluation[] = [
   { date: '2021-03', observer: 'Professor D', course: 'CS 3345', outcome: 'Exceeds expectations' },
 ]
 
-/** Formal evaluations this faculty member must receive in the current cycle. */
+/**
+ * This faculty member's evaluation cycle. Rank sets how often an evaluation is
+ * due (Assistant: every year, Associate/Full: every 2 years). How many
+ * observations one evaluation needs is not confirmed with the client, so we
+ * only count observations received and don't show a required number.
+ */
 export const EVALUATION_REQUIREMENT = {
-  received: 1,
-  required: 2,
+  /** Peer observations received since the last formal evaluation. */
+  observationsReceived: 1,
+  frequency: 'Every 2 years',
   nextDue: 'Mar 2027',
   /** ISO year-month of the next formal evaluation. */
   nextDueMonth: '2027-03',

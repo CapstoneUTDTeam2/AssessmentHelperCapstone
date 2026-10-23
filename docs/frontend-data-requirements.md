@@ -72,7 +72,7 @@ Rows marked ✓ that the backend has no working route for yet are listed under [
 | | email | string | ✗ |
 | | level | string (`CurrentLevel`, e.g. `Assistant Professor`, `Associate Professor`, `Full Professor`) | ✓ |
 | | courses | string[] | ✓ |
-| | completed | integer | ✓ |
+| | observationsReceived | integer (this cycle; no required count) | ✓ |
 | | status | string (`ProfessorEvaluationStatus`.`EvaluationStatus` with `NextDueSemester` / `NextDueYear`, e.g. `Due Spring 2027`, `Overdue`) | ✓ |
 | | unmatched | boolean | ✓ |
 | | needsObserver | boolean | ✓ |
@@ -421,8 +421,8 @@ One row for each sign-up in the cycle, whether or not it has been matched or sch
 | | status | enum: `Report submitted`, `Report received`, `Closed` | ✗ |
 | | reportId | integer? | ✓ |
 | **My evaluation requirement** | | | ✗ |
-| | received | integer | ✓ |
-| | required | integer | ✗ |
+| | observationsReceived | integer | ✓ |
+| | frequency | string (from `ProfessorEvaluationStatus`.`FrequencyYears`, e.g. `Every 2 years`) | ✓ |
 | | nextDue | string (`ProfessorEvaluationStatus`.`NextDueSemester` / `NextDueYear`, e.g. `Spring 2027`) | ✓ |
 | | cycle | string (from `ProfessorEvaluationStatus`.`FrequencyYears`) | ✓ |
 

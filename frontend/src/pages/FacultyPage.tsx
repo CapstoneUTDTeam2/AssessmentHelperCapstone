@@ -21,13 +21,6 @@ const STATUS_PILLS: Record<StatusTone, string> = {
   unknown: 'bg-neutral-500',
 }
 
-const PROGRESS_BARS: Record<StatusTone, string> = {
-  due: 'bg-[#e0791a]',
-  overdue: 'bg-[#b3261e]',
-  ok: 'bg-[#3f8a55]',
-  unknown: 'bg-neutral-500',
-}
-
 const EVENT_STYLES: Record<EventKind, { dot: string; badge: string }> = {
   Observed: { dot: 'bg-[#e0791a]', badge: 'bg-[#e0791a]' },
   Observing: { dot: 'bg-[#1c4532]', badge: 'bg-[#1c4532]' },
@@ -51,14 +44,14 @@ const FILTERS: { key: FilterKey; label: string; match: (f: FacultyMember) => boo
   { key: 'needsObserver', label: 'Needs observer', match: (f) => f.needsObserver },
 ]
 
-type SortKey = 'next' | 'name' | 'level' | 'courses' | 'progress'
+type SortKey = 'next' | 'name' | 'level' | 'courses' | 'observations'
 
 const SORT_LABELS: Record<SortKey, string> = {
   next: 'Next evaluation',
   name: 'Name',
   level: 'Level',
   courses: 'Courses',
-  progress: 'Progress',
+  observations: 'Observations',
 }
 
 const COMPARATORS: Record<SortKey, (a: FacultyMember, b: FacultyMember) => number> = {
@@ -66,19 +59,14 @@ const COMPARATORS: Record<SortKey, (a: FacultyMember, b: FacultyMember) => numbe
   name: (a, b) => a.name.localeCompare(b.name),
   level: (a, b) => a.level.localeCompare(b.level),
   courses: (a, b) => (a.courses[0] ?? '').localeCompare(b.courses[0] ?? ''),
-  progress: (a, b) => progress(a) - progress(b),
-}
-
-/** Share of required evaluations completed; 0 when none are required yet. */
-function progress(f: FacultyMember) {
-  return f.required ? f.completed / f.required : 0
+  observations: (a, b) => (a.observationsReceived ?? -1) - (b.observationsReceived ?? -1),
 }
 
 const COLUMNS: { label: string; sortKey: SortKey }[] = [
   { label: 'Faculty', sortKey: 'name' },
   { label: 'Level', sortKey: 'level' },
   { label: 'Courses', sortKey: 'courses' },
-  { label: 'Evaluation obligations', sortKey: 'progress' },
+  { label: 'Observations this cycle', sortKey: 'observations' },
   { label: 'Evaluation status', sortKey: 'next' },
 ]
 
@@ -307,27 +295,12 @@ function FacultyPage() {
                       </div>
                     </td>
                     <td className="px-2 py-2.5">
-                      {member.required === 0 ? (
+                      {member.observationsReceived === null ? (
                         <span className="text-neutral-400">—</span>
                       ) : (
-                        <>
-                          <p className="text-[10px] text-neutral-800">
-                            {member.completed} of {member.required} evaluations completed
-                          </p>
-                          <div
-                            className="mt-1 h-1 w-28 rounded-full bg-neutral-200"
-                            role="progressbar"
-                            aria-valuemin={0}
-                            aria-valuemax={member.required}
-                            aria-valuenow={member.completed}
-                            aria-label={`${member.name} evaluations completed`}
-                          >
-                            <div
-                              className={`h-1 rounded-full ${PROGRESS_BARS[member.statusTone]}`}
-                              style={{ width: `${Math.max(progress(member) * 100, 4)}%` }}
-                            />
-                          </div>
-                        </>
+                        <p className="text-[10px] text-neutral-800">
+                          {member.observationsReceived} observation{member.observationsReceived === 1 ? '' : 's'} received
+                        </p>
                       )}
                     </td>
                     <td className="px-2 py-2.5">

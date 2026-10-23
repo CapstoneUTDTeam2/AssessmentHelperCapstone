@@ -244,20 +244,15 @@ function StatsRow({ sessions }: { sessions: UpcomingEvaluation[] }) {
         {req.cycle} · about {months} month{months === 1 ? '' : 's'} away
       </StatCard>
       <StatCard
-        label="Evaluations received"
+        label="Observations received"
         value={
           <>
-            <span className="text-2xl">{req.received}</span>
-            <span className="ml-1 text-xs font-normal text-neutral-600">of {req.required} this cycle</span>
+            <span className="text-2xl">{req.observationsReceived}</span>
+            <span className="ml-1 text-xs font-normal text-neutral-600">this cycle</span>
           </>
         }
       >
-        <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-neutral-200">
-          <span
-            className="block h-full rounded-full bg-[#1c4532]"
-            style={{ width: `${Math.min(100, (req.received / req.required) * 100)}%` }}
-          />
-        </span>
+        Evaluation required {req.frequency.toLowerCase()}
       </StatCard>
       <StatCard
         label="Evaluations you give"
