@@ -126,6 +126,59 @@ The list is saved once, so the committee, the notification, and `GET /api/observ
 - `GET /api/observers/{professor_id}/availability` — weekly slots, unavailable dates, and observer enrollment status. Optional `?cycle_id=`.
 - `PUT /api/observers/{professor_id}/availability` — replaces them. Body: `weekly` (list of `weekday` `M`/`T`/`W`/`R`/`F`, `start_time`, `end_time`), `unavailable_dates` (list of `YYYY-MM-DD`), optional `cycle_id`. `400` for a bad weekday, a repeated weekday, start not before end, a past date, a date after the observation deadline, or once the observation deadline has passed. Saving also enrolls the professor as an observer if they weren't already.
 
+### Observer requests (`AHC-261` to `AHC-267`)
+
+`api/observer_requests.py`. Statuses: a request is `Pending`, then `Accepted` or `Declined` by the observer (`Expired` after 48 hours). When the observee chooses one observer, the other confirmed observers become `Not Selected` (graceful decline, with a message) and unanswered requests become `Cancelled`. The signup goes `List Ready` → `Requests Sent` → `Accepted`.
+
+- `POST /api/observer-requests` — observee sends requests. Body: `signup_id`, `observee_id`, `observer_ids` (must be on the saved list), optional `proposed_dates` (first send only). Proposed dates must be class days, not in the past, and on or before the observation deadline (`AHC-262`).
+- `GET /api/signups/{signup_id}/requests` — the observee's requests and answers
+- `GET /api/observer-requests?observer_id=` — requests sent to an observer, with the class and proposed dates (`AHC-263`)
+- `POST /api/observer-requests/{request_id}/accept` and `/decline` — body `observer_id`. An observer can confirm at most 3 per cycle (`MAX_CONFIRMATIONS_PER_CYCLE`).
+- `GET /api/observer-requests/accepted?observer_id=` — accepted confirmations and whether they were picked (`AHC-264`)
+- `POST /api/signups/{signup_id}/select-observer` — body `observee_id`, `observer_id` (must have confirmed), optional `observation_date` (one of the proposed dates, defaults to the first). Creates the `Scheduled` observation (`AHC-265` to `AHC-267`).
+
+### Templates and criteria (`AHC-280`)
+
+`api/templates.py`. Ratings are 1 to 5, and 6 means Not Applicable. A template locks once a completed observation used it, so changes go in a new version and old versions are kept.
+
+- `GET /api/templates`, `GET /api/templates/{id}`, `GET /api/templates/current?cycle_id=`
+- `PUT /api/templates/{id}` — rename (unlocked only)
+- `POST /api/templates/{id}/versions` — copy a template (sections, criteria, bullets) into a new unlocked version
+- `PUT /api/evaluation-cycles/{cycle_id}/template` — pick a cycle's template (`409` once it has observations)
+- `POST /api/templates/{id}/sections`, `PUT /api/sections/{id}`, `DELETE /api/sections/{id}`
+- `POST /api/templates/{id}/criteria`, `PUT /api/criteria/{id}`, `DELETE /api/criteria/{id}` — a criterion that already has a rating can't be deleted; mark it inactive instead
+
+### Observations, form, and signatures (`AHC-281`, `AHC-283`)
+
+`api/observations.py`:
+
+- `GET /api/observations?cycle_id=&status=` — observations in a cycle
+- `GET /api/observations/{id}` — the report: who, class, criteria with ratings and comments, summary, signatures, `missing` items before it can be signed
+- `GET /api/professors/{id}/observations` — observations a professor received and gave, and which need their signature
+- `PUT /api/observations/{id}/ratings` — observer saves ratings, comments, and `summary`. Locked once anyone signs.
+- `POST /api/observations/{id}/sign` — body `professor_id` (observer or observee). Needs the observation date to have passed and every required criterion rated (a rating of 1 or 2 needs a comment when the criterion asks for one). When both have signed, the observation is `Completed` and the database locks it.
+
+### Surveys (`AHC-297` to `AHC-299`)
+
+`api/surveys.py`. The post-observation survey opens after the observation deadline and closes at the post-observation feedback deadline. One per professor per role per cycle.
+
+- `GET /api/professors/{id}/surveys` — which surveys they owe, whether it's open, and their answers
+- `POST /api/surveys` — body `professor_id`, `role` (`Observee` or `Observer`), `process_ok`, `difficulties`, `improvements`
+- `GET /api/surveys` — responses and who hasn't answered
+- `POST /api/surveys/notify` — committee sends the survey notice (after the observation deadline). Observees who haven't answered see `survey_open` in `GET /api/observees/{id}/notifications`.
+
+### KPIs and reports (`AHC-300` to `AHC-308`)
+
+`api/kpis.py`:
+
+- `GET /api/kpis` — eligibility accuracy (saved matches checked against the process doc's incorrect-match list), overdue count, participation rate, observer utilization, list sufficiency, missing observations, survey completion
+- `GET /api/dashboard/executive` — faculty due and overdue by hire level, outstanding reports by hire level, unmatched faculty
+- `GET /api/reports/unmatched-faculty` — signups with no observer yet and why
+
+### Login
+
+`POST /api/auth/login` — body `email`, `password`. Checks `Professors.pass_hash` (SHA-256 hex). Returns the professor; `401` for a wrong email or password or an account with no password set. `is_ac` is `true` for Assessment Committee members (`Professors.isAC`), so the frontend can show the committee pages.
+
 ### Evaluation cycle deadline handling (`AHC-223`)
 
 The database triggers already reject late signups, observations, and surveys. `api/cycle_deadlines.py` is the API side:

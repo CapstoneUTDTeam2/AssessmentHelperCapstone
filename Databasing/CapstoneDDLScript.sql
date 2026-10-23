@@ -112,6 +112,10 @@ ALTER TABLE EvaluationCycle
     ADD COLUMN TemplateID INT
     REFERENCES ObservationTemplate(TemplateID);
 
+-- When the AC sent the post-observation survey notification for the cycle (NULL = not sent yet)
+ALTER TABLE EvaluationCycle
+    ADD COLUMN SurveyNotificationSentAt TIMESTAMP;
+
 
 -- EvaluationCriterionSectioner
 CREATE TABLE EvaluationCriterionSection (
@@ -449,9 +453,6 @@ CREATE TABLE PostObservationSurveyResponse (
     ProcessStatus VARCHAR(50),
     Difficulties TEXT,
     ImprovementConditions TEXT,
-    NotificationSent NOT NULL,
-    ObserverSigned BOOLEAN NOT NULL DEFAULT FALSE,
-    ObserveeSigned BOOLEAN NOT NULL DEFAULT FALSE;
     foreign key (CycleID) references EvaluationCycle(CycleID),
     foreign key (ProfessorID) references Professors(ProfessorID),
     foreign key (SignupID) references ObservationSignup(SignupID)
@@ -1184,8 +1185,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Only check eligibility when a request is created or moved, not when its status changes,
+-- so declining or not selecting an observer still works if their availability changed later.
 CREATE TRIGGER validate_observer_qualification
-BEFORE INSERT OR UPDATE
+BEFORE INSERT OR UPDATE OF SignupID, ObserverProfessorID
 ON ObserverRequest
 FOR EACH ROW
 EXECUTE FUNCTION check_observer_qualification();

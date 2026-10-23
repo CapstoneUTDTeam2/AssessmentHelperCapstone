@@ -18,7 +18,7 @@ STATUS_LIST_READY = "List Ready"
 
 # Only these signups get a new list. Later statuses, like List Ready or Accepted, keep theirs.
 SELECTABLE_STATUSES = (STATUS_PENDING, STATUS_MATCHED, STATUS_UNMATCHED)
-LIST_STATUSES = (STATUS_MATCHED, STATUS_UNMATCHED, STATUS_LIST_READY)
+LIST_STATUSES = (STATUS_MATCHED, STATUS_UNMATCHED, STATUS_LIST_READY, "Requests Sent")
 
 SIGNUP_COLUMNS = """
     os.signupid,
@@ -29,7 +29,11 @@ SIGNUP_COLUMNS = """
     s.sectionid,
     s.sectionname,
     c.coursecode,
-    c.coursename
+    c.coursename,
+    (
+        EXISTS (SELECT 1 FROM ObserverRequest r WHERE r.SignupID = os.SignupID)
+        OR EXISTS (SELECT 1 FROM Observation o WHERE o.SignupID = os.SignupID)
+    ) AS hasrequests
 FROM ObservationSignup os
 JOIN Professors p ON os.ObserveeProfessorID = p.ProfessorID
 JOIN Sections s ON os.SectionID = s.SectionID
@@ -81,6 +85,18 @@ VALUES (:signup_id, :observer_id, :saved_date)
 
 PROFESSOR_SQL = "SELECT professorid FROM Professors WHERE professorid = :professor_id"
 
+SURVEY_NOTICE_SQL = """
+SELECT
+    ec.surveynotificationsentat AS sentat,
+    ec.postobservationfeedbackdeadline AS deadline,
+    EXISTS (
+        SELECT 1 FROM PostObservationSurveyResponse r
+        WHERE r.CycleID = ec.CycleID AND r.ProfessorID = :professor_id AND r.Role = 'Observee'
+    ) AS answered
+FROM EvaluationCycle ec
+WHERE ec.CycleID = :cycle_id
+"""
+
 UPDATE_STATUS_SQL = "UPDATE ObservationSignup SET Status = :status WHERE SignupID = :signup_id"
 
 
@@ -108,6 +124,11 @@ def saved_observers(conn, signup_id):
 
 def has_saved_list(status):
     return status in LIST_STATUSES
+
+
+def _selectable(signup):
+    # Signups that already sent requests or have an observer keep what they have.
+    return signup["status"] in SELECTABLE_STATUSES and not signup["hasrequests"]
 
 
 def _pick(eligible):
@@ -187,7 +208,7 @@ def start_observer_selection(
         results, alerts = [], []
         for signup in _cycle_signups(conn, cycle):
             status = signup["status"]
-            if status not in SELECTABLE_STATUSES:
+            if not _selectable(signup):
                 saved = saved_observers(conn, signup["signupid"])
                 results.append(_signup_summary(signup, status, saved))
                 continue
@@ -234,7 +255,7 @@ def list_observer_alerts(
         cycle = resolve_cycle(conn, cycle_id)
         alerts = []
         for signup in _cycle_signups(conn, cycle):
-            if signup["status"] not in SELECTABLE_STATUSES + (STATUS_LIST_READY,):
+            if signup["hasrequests"] or signup["status"] not in SELECTABLE_STATUSES + (STATUS_LIST_READY,):
                 continue
             alert = _alert_for(signup, len(eligible_observers(conn, signup["signupid"])))
             if alert:
@@ -329,6 +350,7 @@ def get_observee_notifications(
             {
                 "type": "observer_list_ready",
                 "signup_id": signup["signupid"],
+                "status": signup["status"],
                 "course_code": signup["coursecode"],
                 "section_name": signup["sectionname"],
                 "message": (
@@ -340,4 +362,20 @@ def get_observee_notifications(
             for signup in signups
             if signup["status"] == STATUS_LIST_READY
         ]
+        # AHC-299: once the committee sends the survey notice, observees who haven't answered see it.
+        survey = conn.execute(text(SURVEY_NOTICE_SQL), {"cycle_id": cycle["cycleid"], "professor_id": professor_id}).mappings().first()
+        if signups and survey["sentat"] is not None and not survey["answered"]:
+            notifications.append(
+                {
+                    "type": "survey_open",
+                    "signup_id": signups[0]["signupid"],
+                    "status": signups[0]["status"],
+                    "observers": [],
+                    "message": (
+                        "The observation period is over. Please take the end-of-process survey by "
+                        f"{survey['deadline'].isoformat()}."
+                    ),
+                    "due": survey["deadline"].isoformat(),
+                }
+            )
     return {**_cycle_info(cycle), "professor_id": professor_id, "notifications": notifications}

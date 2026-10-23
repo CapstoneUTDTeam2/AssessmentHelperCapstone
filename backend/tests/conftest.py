@@ -59,3 +59,30 @@ def client():
 
     with TestClient(app) as test_client:
         yield test_client
+
+
+def _next_weekday(start, weekday):
+    return start + timedelta(days=(weekday - start.weekday()) % 7 or 7)
+
+
+@pytest.fixture
+def fresh_signups(client):
+    """Carol's (3) and David's (4) signups as if nobody has sent requests yet.
+
+    The sample data already gives them accepted requests and scheduled observations,
+    so this clears those and moves their preferred dates to the next Monday and Wednesday.
+    """
+    import psycopg
+
+    with psycopg.connect(_raw_conninfo(TEST_DATABASE_URL), autocommit=True) as conn:
+        today = conn.execute("SELECT (now() AT TIME ZONE 'America/Chicago')::date").fetchone()[0]
+        monday, wednesday = _next_weekday(today, 0), _next_weekday(today, 2)
+        conn.execute("DELETE FROM Observation WHERE SignupID IN (3, 4)")
+        conn.execute("DELETE FROM ObserverRequest WHERE SignupID IN (3, 4)")
+        conn.execute("DELETE FROM SignupPreferredDate WHERE SignupID IN (3, 4)")
+        for signup_id in (3, 4):
+            conn.execute(
+                "INSERT INTO SignupPreferredDate VALUES (%s, %s), (%s, %s)",
+                (signup_id, monday, signup_id, wednesday),
+            )
+    return {"monday": monday, "wednesday": wednesday}
