@@ -32,6 +32,7 @@ CREATE TABLE Professors (
     StartTermID INT,
     Email TEXT,
     pass_hash VARCHAR(64),
+    isAC BOOLEAN,
     foreign key (ProfessorDepartment) references Department(DepartmentID),
     foreign key (StartTermID) references AcademicTerm(TermID)
 );
