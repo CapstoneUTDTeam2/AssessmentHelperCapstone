@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { SignupActions, SignupStatus } from '../components/SignupActions'
+import { useSignups } from '../hooks/useSignups'
 import SortHeader from '../components/SortHeader'
 import {
   EVALUATION_LOG,
@@ -405,6 +406,7 @@ function UpcomingSessionsCard({
   onOpenReport,
   onOpenCalendar,
 }: {
+  today: string
   items: UpcomingEvaluation[]
   onConfirm: (id: number) => void
   onOpenReport: (id: number) => void
@@ -572,8 +574,11 @@ function HistoryCard() {
     <section className={card}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-neutral-900">History</h2>
-          <p className="mt-0.5 text-[10px] text-neutral-500">Completed peer and formal evaluations</p>
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
+            History
+            <MockDataBadge />
+          </h2>
+          <MockDataNote>Past observations have no API yet.</MockDataNote>
         </div>
         <button type="button" onClick={exportHistory} className="shrink-0 text-[11px] font-medium text-[#c4561a] hover:underline">
           Export →

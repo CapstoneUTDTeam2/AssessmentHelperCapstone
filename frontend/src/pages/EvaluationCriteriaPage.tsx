@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
+import { MockDataNote } from '../components/MockData'
 import { CRITERIA, CURRENT_CYCLE, RATING_SCALE, SECTIONS } from '../data/criteriaMock'
 import type { CriteriaSection, Criterion, Modality } from '../data/criteriaMock'
 
@@ -124,6 +125,7 @@ function EvaluationCriteriaPage() {
             {CURRENT_CYCLE} cycle · {activeCount} active criteria in {sections.length} sections · used on every
             class observation form
           </p>
+          <MockDataNote>Criteria save/load has no API yet. Edits stay in this browser session.</MockDataNote>
         </div>
         <div className="flex gap-2">
           <button

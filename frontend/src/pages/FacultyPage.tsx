@@ -9,7 +9,6 @@ import type {
   EventKind,
   FacultyLevel,
   FacultyMember,
-  ObserverMatch,
   StatusTone,
 } from '../data/facultyMock'
 import { useObserverMatching } from '../hooks/useObserverMatching'
@@ -137,20 +136,19 @@ function FacultyPage() {
                 : 'Faculty data unavailable'}
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 transition-colors hover:bg-neutral-50"
-          >
-            Export List
-          </button>
-          <button
-            type="button"
-            className="rounded-md bg-[#e0791a] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[#c96a12]"
-          >
-            + Add Faculty
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() =>
+            downloadCsv(
+              'faculty.csv',
+              ['Name', 'Level', 'Courses', 'Status', 'Next evaluation'],
+              rows.map((f) => [f.name, f.level, f.courses.join('; '), f.status, f.details.nextEvaluation]),
+            )
+          }
+          className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 transition-colors hover:bg-neutral-50"
+        >
+          Export List
+        </button>
       </header>
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
@@ -248,7 +246,6 @@ function FacultyPage() {
                   </th>
                 )
               })}
-              <th className="w-10" aria-label="Actions" />
             </tr>
           </thead>
           <tbody>
@@ -307,15 +304,6 @@ function FacultyPage() {
                       <span className={`rounded-full px-2.5 py-1 text-[10px] font-medium whitespace-nowrap text-white ${STATUS_PILLS[member.statusTone]}`}>
                         {member.status}
                       </span>
-                    </td>
-                    <td className="pr-3">
-                      <button
-                        type="button"
-                        aria-label={`More actions for ${member.name}`}
-                        className="rounded px-1.5 text-neutral-500 hover:bg-neutral-100"
-                      >
-                        ···
-                      </button>
                     </td>
                   </tr>
                   {isOpen && (
@@ -391,28 +379,34 @@ function FacultyDetailsPanel({ member, faculty }: { member: FacultyMember; facul
   return (
     <div className="grid gap-3 lg:grid-cols-[1.25fr_0.85fr_1fr]">
       <section className="rounded-lg border border-neutral-200 bg-white p-3">
-        <h3 className="text-xs font-semibold text-neutral-900">Evaluations</h3>
-        <EventList title="Past" events={details.past} />
-        <EventList title="Upcoming" events={details.upcoming} />
+        <h3 className="flex items-center gap-1.5 text-xs font-semibold text-neutral-900">
+          Evaluations
+          {pastIsMock && <MockDataBadge />}
+        </h3>
+        {pastIsMock && <MockDataNote>Observation history has no API yet.</MockDataNote>}
+        <EventList title="Past" events={past} />
+        <EventList title="Upcoming" events={upcoming} />
       </section>
 
       <section className="rounded-lg border border-neutral-200 bg-white p-3">
         <h3 className="text-xs font-semibold text-neutral-900">Profile &amp; Evaluation</h3>
         <dl className="mt-3 space-y-2.5">
-          <ProfileField label="Hire level" value={details.hireLevel} />
+          <ProfileField label="Rank" value={details.hireLevel} />
           <ProfileField label="Evaluation cycle" value={details.cycle} />
           <ProfileField label="Last evaluation" value={details.lastEvaluation} />
           <ProfileField label="Next evaluation" value={details.nextEvaluation} highlight />
-          <div>
-            <dt className="text-[9px] text-neutral-500">Instructor level</dt>
-            <dd className="mt-1 flex flex-col items-start gap-1">
-              {details.instructorLevels.map((tag) => (
-                <span key={tag} className="rounded border border-[#e0791a] px-1.5 py-px text-[9px] text-[#e0791a]">
-                  {tag}
-                </span>
-              ))}
-            </dd>
-          </div>
+          {details.instructorLevels.length > 0 && (
+            <div>
+              <dt className="text-[9px] text-neutral-500">Instructor level</dt>
+              <dd className="mt-1 flex flex-col items-start gap-1">
+                {details.instructorLevels.map((tag) => (
+                  <span key={tag} className="rounded border border-[#e0791a] px-1.5 py-px text-[9px] text-[#e0791a]">
+                    {tag}
+                  </span>
+                ))}
+              </dd>
+            </div>
+          )}
         </dl>
       </section>
 
@@ -451,6 +445,7 @@ function FacultyDetailsPanel({ member, faculty }: { member: FacultyMember; facul
             Full profile
           </button>
         </div>
+        <ApiObserverList observers={observers} />
       </section>
     </div>
   )

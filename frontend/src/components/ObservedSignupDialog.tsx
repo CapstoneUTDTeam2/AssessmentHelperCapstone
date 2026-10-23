@@ -5,6 +5,7 @@ import MonthCalendar from './MonthCalendar'
 
 /** A section the faculty member teaches and could be observed in. */
 export interface ObservableSection {
+  sectionId: number
   course: string
   title: string
   section: string
@@ -12,10 +13,11 @@ export interface ObservableSection {
   days: string
   start: string
   end: string
-  room: string
+  room?: string
 }
 
 export interface ObservedSignup {
+  sectionId: number
   course: string
   section: string
   /** Days the faculty member can be observed; the observer picks one. */
@@ -29,6 +31,8 @@ interface ObservedSignupDialogProps {
   windowEnd: string
   cycleLabel: string
   initial: ObservedSignup | null
+  /** True when a signup already exists; the API does not support editing it. */
+  readOnly?: boolean
   onClose: () => void
   onSubmit: (signup: ObservedSignup) => void
 }
@@ -39,7 +43,16 @@ const DAY_NAMES: Record<string, string> = { M: 'Mon', T: 'Tue', W: 'Wed', R: 'Th
 const dayNames = (days: string) => [...days].map((d) => DAY_NAMES[d] ?? d).join('/')
 
 /** Render only while open; it opens as a modal on mount. */
-function ObservedSignupDialog({ sections, windowStart, windowEnd, cycleLabel, initial, onClose, onSubmit }: ObservedSignupDialogProps) {
+function ObservedSignupDialog({
+  sections,
+  windowStart,
+  windowEnd,
+  cycleLabel,
+  initial,
+  readOnly = false,
+  onClose,
+  onSubmit,
+}: ObservedSignupDialogProps) {
   const [selectedKey, setSelectedKey] = useState<string | null>(initial ? keyOf(initial) : null)
   const [dates, setDates] = useState<Set<string>>(() => new Set(initial?.dates))
 
@@ -68,10 +81,14 @@ function ObservedSignupDialog({ sections, windowStart, windowEnd, cycleLabel, in
 
   return (
     <Modal
-      title="Sign Up to Be Observed"
-      description={`Choose one of your ${cycleLabel} classes, then every day it meets that you’d be okay being observed. Your observer picks one of those days.`}
-      submitLabel={initial ? 'Save sign-up' : 'Sign up'}
-      canSubmit={selected !== null && dates.size > 0}
+      title={readOnly ? 'Observation Sign-up' : 'Sign Up to Be Observed'}
+      description={
+        readOnly
+          ? `Your ${cycleLabel} signup. One course per cycle; signing up also puts you in the observer pool.`
+          : `Choose one of your ${cycleLabel} classes, then every day it meets that you’d be okay being observed. One course per cycle. Signing up also puts you in the observer pool.`
+      }
+      submitLabel={readOnly ? 'Close' : initial ? 'Save sign-up' : 'Sign up'}
+      canSubmit={readOnly || (selected !== null && dates.size > 0)}
       footerNote={
         selected && dates.size > 0 ? (
           <span className="text-neutral-700">
@@ -86,7 +103,20 @@ function ObservedSignupDialog({ sections, windowStart, windowEnd, cycleLabel, in
         )
       }
       onClose={onClose}
-      onSubmit={() => selected && onSubmit({ course: selected.course, section: selected.section, dates: sortedDates })}
+      onSubmit={() => {
+        if (readOnly) {
+          onClose()
+          return
+        }
+        if (selected) {
+          onSubmit({
+            sectionId: selected.sectionId,
+            course: selected.course,
+            section: selected.section,
+            dates: sortedDates,
+          })
+        }
+      }}
     >
       <fieldset>
         <legend className="text-xs font-medium">1. Class</legend>
@@ -114,7 +144,8 @@ function ObservedSignupDialog({ sections, windowStart, windowEnd, cycleLabel, in
                     {s.course}.{s.section} · {s.title}
                   </span>
                   <span className="block text-[11px] text-neutral-500">
-                    {dayNames(s.days)} {formatTime(s.start)}–{formatTime(s.end)} · {s.room}
+                    {dayNames(s.days)} {formatTime(s.start)}–{formatTime(s.end)}
+                    {s.room && s.room !== '—' ? ` · ${s.room}` : ''}
                   </span>
                 </span>
               </label>

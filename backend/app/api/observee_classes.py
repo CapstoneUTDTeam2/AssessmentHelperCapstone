@@ -35,8 +35,10 @@ SELECT
 FROM TeachingAssignment ta
 JOIN Sections s ON ta.SectionID = s.SectionID
 JOIN Courses c ON s.CourseID = c.CourseID
+JOIN AcademicTerm at ON s.TermID = at.TermID
 WHERE ta.ProfessorID = :professor_id
-  AND s.TermID = :term_id
+  AND at.Semester = :semester
+  AND at.YearNum = :year
 ORDER BY c.coursecode, s.sectionname
 """
 
@@ -105,11 +107,11 @@ def _class_payload(row):
     }
 
 
-def _load_classes(professor_id: int, term_id: int):
+def _load_classes(professor_id: int, semester: str, year: int):
     with engine.connect() as conn:
         rows = conn.execute(
             text(CLASSES_SQL),
-            {"professor_id": professor_id, "term_id": term_id},
+            {"professor_id": professor_id, "semester": semester, "year": year},
         ).mappings().all()
     return [_class_payload(row) for row in rows]
 
@@ -153,7 +155,7 @@ def get_observee_current_classes(professor_id: int):
         **professor,
         "semester": term["semester"],
         "year": term["year"],
-        "classes": _load_classes(professor_id, term["term_id"]),
+        "classes": _load_classes(professor_id, term["semester"], term["year"]),
     }
 
 

@@ -20,7 +20,8 @@ SELECT
     p.professorid,
     p.professorname
 FROM Courses c
-LEFT JOIN Sections s ON s.CourseID = c.CourseID AND s.TermID = :term_id
+LEFT JOIN AcademicTerm at ON at.Semester = :semester AND at.YearNum = :year
+LEFT JOIN Sections s ON s.CourseID = c.CourseID AND s.TermID = at.TermID
 LEFT JOIN TeachingAssignment ta ON ta.SectionID = s.SectionID
 LEFT JOIN Professors p ON p.ProfessorID = ta.ProfessorID
 ORDER BY c.coursecode, s.sectionname, p.professorname
@@ -37,9 +38,9 @@ def _empty_course(row):
     }
 
 
-def _load_catalog(term_id: int, course_id: int | None = None):
+def _load_catalog(semester: str, year: int, course_id: int | None = None):
     sql = COURSES_SQL
-    params = {"term_id": term_id}
+    params = {"semester": semester, "year": year}
     if course_id is not None:
         sql = COURSES_SQL.replace(
             "ORDER BY",
@@ -94,7 +95,7 @@ def list_courses():
     return {
         "semester": term["semester"],
         "year": term["year"],
-        "courses": _load_catalog(term["term_id"]),
+        "courses": _load_catalog(term["semester"], term["year"]),
     }
 
 
@@ -104,7 +105,7 @@ def get_course(course_id: int):
     # Input: course_id
     # Output: that course, or 404
     term = _load_current_term()
-    courses = _load_catalog(term["term_id"], course_id)
+    courses = _load_catalog(term["semester"], term["year"], course_id)
     if not courses:
         raise HTTPException(status_code=404, detail="Course not found")
     return {

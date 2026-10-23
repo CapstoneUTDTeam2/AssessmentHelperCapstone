@@ -1,19 +1,9 @@
-import { useMemo, useState } from 'react'
-import { COURSES, TERM } from '../data/courseMock'
-import type { Course, Days, HistoryEntry, Section, SectionTone, Term } from '../data/courseMock'
-import { LEVEL_COLORS } from '../theme'
-
-const SECTION_BADGES: Record<SectionTone, string> = {
-  ok: 'bg-[#3f8a55]',
-  needsObserver: 'bg-[#b3261e]',
-  overdue: 'bg-[#b3261e]',
-}
-
-const COURSE_DOTS = {
-  ok: 'bg-[#3f8a55]',
-  attention: 'bg-[#e0791a]',
-  alert: 'bg-[#b3261e]',
-}
+import { useEffect, useMemo, useState } from 'react'
+import { ApiError } from '../api/client'
+import { ingestCourseBook } from '../api/coursebook'
+import { getCourses } from '../api/courses'
+import type { CatalogCourse } from '../api/courses'
+import type { Course, Days, Section } from '../data/courseMock'
 
 /** Schedule block colors, assigned to a course's instructors in order. */
 const INSTRUCTOR_PALETTE = ['#1c4532', '#0f1f17', '#e0791a', '#3f8a55', '#c4561a']
@@ -29,15 +19,12 @@ const DAY_INDEXES: Record<Days, number[]> = {
 /** Pixel height of one hour in the weekly schedule. */
 const HOUR_HEIGHT = 36
 
-const TERM_ORDER: Record<Term, number> = { Spring: 0, Summer: 1, Fall: 2 }
-
-type CourseFilter = 'all' | 'undergrad' | 'grad' | 'needsObserver'
+type CourseFilter = 'all' | 'undergrad' | 'grad'
 
 const COURSE_FILTERS: { key: CourseFilter; label: string; match: (c: Course) => boolean }[] = [
   { key: 'all', label: 'All', match: () => true },
   { key: 'undergrad', label: 'Undergrad', match: (c) => !isGraduate(c) },
   { key: 'grad', label: 'Grad', match: (c) => isGraduate(c) },
-  { key: 'needsObserver', label: 'Needs observer', match: (c) => needsObserverCount(c) > 0 },
 ]
 
 type CourseSort = 'code' | 'title' | 'sections'
@@ -48,26 +35,15 @@ const COURSE_SORTS: Record<CourseSort, { label: string; compare: (a: Course, b: 
   sections: { label: 'Sections', compare: (a, b) => b.sections.length - a.sections.length },
 }
 
-type SectionSort = 'number' | 'instructor' | 'enrollment'
+type SectionSort = 'number' | 'instructor'
 
 const SECTION_SORTS: Record<SectionSort, { label: string; compare: (a: Section, b: Section) => number }> = {
   number: { label: 'Section', compare: (a, b) => a.number.localeCompare(b.number) },
   instructor: { label: 'Instructor', compare: (a, b) => a.instructor.localeCompare(b.instructor) },
-  enrollment: { label: 'Enrollment', compare: (a, b) => b.enrolled - a.enrolled },
 }
 
 function isGraduate(course: Course) {
   return Number(course.code.split(' ')[1]) >= 5000
-}
-
-function needsObserverCount(course: Course) {
-  return course.sections.filter((s) => s.tone === 'needsObserver').length
-}
-
-function courseTone(course: Course): keyof typeof COURSE_DOTS {
-  if (course.sections.some((s) => s.tone === 'overdue')) return 'alert'
-  if (course.sections.some((s) => s.tone === 'needsObserver')) return 'attention'
-  return 'ok'
 }
 
 function instructorsOf(course: Course) {
@@ -83,16 +59,64 @@ function formatTime(time: string) {
   return time.replace(/^0/, '')
 }
 
-function semesterValue(entry: HistoryEntry) {
-  return entry.year * 10 + TERM_ORDER[entry.term]
+function asDays(value: string): Days {
+  if (value === 'TR' || value === 'MWF') return value
+  return 'MW'
+}
+
+function fromCatalog(course: CatalogCourse): Course {
+  return {
+    code: course.course_code,
+    title: course.course_name,
+    creditHours: 0,
+    prereqs: [],
+    department: course.course_code.split(' ')[0] ?? '—',
+    history: [],
+    sections: course.sections.map((section) => ({
+      number: section.section_name,
+      instructor: section.instructors[0]?.professor_name ?? '—',
+      rank: 'Lecturer',
+      days: asDays(section.meeting_days),
+      start: section.start_time,
+      end: section.end_time,
+      room: '',
+      enrolled: 0,
+      capacity: 0,
+      status: '',
+      tone: 'ok',
+    })),
+  }
 }
 
 function CoursePage() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<CourseFilter>('all')
   const [sort, setSort] = useState<CourseSort>('code')
-  const [selectedCode, setSelectedCode] = useState('CS 3345')
+  const [selectedCode, setSelectedCode] = useState('')
+  const [catalog, setCatalog] = useState<{ term: string; courses: Course[] } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [pulling, setPulling] = useState(false)
+  const [pullMessage, setPullMessage] = useState<string | null>(null)
 
+  const loadCourses = (signal?: AbortSignal) =>
+    getCourses(signal).then((body) => {
+      const courses = body.courses.map(fromCatalog)
+      setCatalog({ term: `${body.semester} ${body.year}`, courses })
+      setSelectedCode((current) => current || courses[0]?.code || '')
+      setError(null)
+    })
+
+  useEffect(() => {
+    const controller = new AbortController()
+    loadCourses(controller.signal).catch((err: unknown) => {
+      if (controller.signal.aborted) return
+      setError(err instanceof Error ? err.message : 'Failed to load courses')
+    })
+    return () => controller.abort()
+  }, [])
+
+  const COURSES = catalog?.courses ?? []
+  const TERM = catalog?.term ?? '—'
   const totalSections = COURSES.reduce((sum, c) => sum + c.sections.length, 0)
   const selected = COURSES.find((c) => c.code === selectedCode) ?? COURSES[0]
 
@@ -102,7 +126,25 @@ function CoursePage() {
     return COURSES.filter(
       (c) => match(c) && (!q || c.code.toLowerCase().includes(q) || c.title.toLowerCase().includes(q)),
     ).sort(COURSE_SORTS[sort].compare)
-  }, [search, filter, sort])
+  }, [search, filter, sort, COURSES])
+
+  if (error) {
+    return (
+      <main className="min-w-0 flex-1 px-6 py-7">
+        <h1 className="text-xl font-semibold text-neutral-900">Course Overview</h1>
+        <p className="mt-2 text-sm text-[#b3261e]">{error}</p>
+      </main>
+    )
+  }
+
+  if (!catalog || !selected) {
+    return (
+      <main className="min-w-0 flex-1 px-6 py-7">
+        <h1 className="text-xl font-semibold text-neutral-900">Course Overview</h1>
+        <p className="mt-2 text-sm text-neutral-500">Loading courses from the API…</p>
+      </main>
+    )
+  }
 
   return (
     <main className="min-w-0 flex-1 px-6 py-7">
@@ -110,23 +152,35 @@ function CoursePage() {
         <div>
           <h1 className="text-xl font-semibold text-neutral-900">Course Overview</h1>
           <p className="mt-1 text-xs text-neutral-500">
-            {TERM} · {COURSES.length} courses · {totalSections} sections · synced from UTD CourseBook 2 min ago
+            {TERM} · {COURSES.length} courses · {totalSections} sections · from UTD CourseBook into Courses, Sections, and
+            TeachingAssignment
           </p>
+          {pullMessage && <p className="mt-1 text-[11px] text-neutral-600">{pullMessage}</p>}
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 transition-colors hover:bg-neutral-50"
-          >
-            Sync CourseBook
-          </button>
-          <button
-            type="button"
-            className="rounded-md bg-[#e0791a] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[#c96a12]"
-          >
-            + Add Course
-          </button>
-        </div>
+        <button
+          type="button"
+          disabled={pulling}
+          onClick={() => {
+            setPulling(true)
+            setPullMessage(null)
+            ingestCourseBook()
+              .then((result) => {
+                setPullMessage(
+                  `Imported ${result.courses} courses, ${result.sections} sections (${result.term})`,
+                )
+                return loadCourses()
+              })
+              .catch((err: unknown) => {
+                setPullMessage(
+                  err instanceof ApiError ? err.message : 'CourseBook pull failed; existing data was kept',
+                )
+              })
+              .finally(() => setPulling(false))
+          }}
+          className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 transition-colors hover:bg-neutral-50 disabled:opacity-60"
+        >
+          {pulling ? 'Syncing CourseBook…' : 'Sync CourseBook'}
+        </button>
       </header>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[220px_1fr]">
@@ -206,7 +260,6 @@ function CoursePage() {
                         {course.sections.length} sections · {instructorsOf(course).length} instructors
                       </p>
                     </div>
-                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${COURSE_DOTS[courseTone(course)]}`} aria-hidden="true" />
                   </button>
                 </li>
               )
@@ -219,11 +272,8 @@ function CoursePage() {
 
         <div className="flex min-w-0 flex-col gap-4">
           <CourseHeader course={selected} />
-          <SectionsCard course={selected} />
-          <div className="grid gap-4 xl:grid-cols-[1.25fr_1fr]">
-            <WeeklySchedule course={selected} />
-            <HistoryCard course={selected} />
-          </div>
+          <SectionsCard course={selected} term={TERM} />
+          <WeeklySchedule course={selected} term={TERM} />
         </div>
       </div>
     </main>
@@ -232,9 +282,6 @@ function CoursePage() {
 
 function CourseHeader({ course }: { course: Course }) {
   const [subject, number] = course.code.split(' ')
-  const enrolled = course.sections.reduce((sum, s) => sum + s.enrolled, 0)
-  const capacity = course.sections.reduce((sum, s) => sum + s.capacity, 0)
-  const needsObserver = needsObserverCount(course)
 
   return (
     <section className="flex flex-wrap items-start gap-4 rounded-lg border border-neutral-200 bg-white p-4">
@@ -248,10 +295,6 @@ function CourseHeader({ course }: { course: Course }) {
         <span className="mt-1 inline-block rounded border border-neutral-200 px-1.5 py-px text-[9px] text-neutral-800">
           {isGraduate(course) ? 'Graduate' : 'Undergraduate'}
         </span>
-        <p className="mt-1 text-[11px] text-neutral-600">
-          {course.creditHours} credit hours · Prereq: {course.prereqs.length ? course.prereqs.join(', ') : 'None'} ·{' '}
-          {course.department}
-        </p>
         <dl className="mt-1.5 flex flex-wrap gap-x-5 gap-y-0.5 text-[10px] text-neutral-500">
           <div className="flex gap-1">
             <dt>Sections:</dt>
@@ -261,40 +304,13 @@ function CourseHeader({ course }: { course: Course }) {
             <dt>Instructors:</dt>
             <dd className="font-semibold text-neutral-900">{instructorsOf(course).length}</dd>
           </div>
-          <div className="flex gap-1">
-            <dt>Enrolled:</dt>
-            <dd className="font-semibold text-neutral-900">
-              {enrolled} / {capacity}
-            </dd>
-          </div>
         </dl>
-        <p className="mt-0.5 text-[10px] text-neutral-500">
-          Needs observer:{' '}
-          <span className={needsObserver ? 'font-semibold text-[#e0791a]' : 'font-semibold text-neutral-900'}>
-            {needsObserver === 0 ? 'None' : `${needsObserver} section${needsObserver > 1 ? 's' : ''}`}
-          </span>
-        </p>
-      </div>
-
-      <div className="flex gap-2">
-        <button
-          type="button"
-          className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-[11px] text-neutral-900 transition-colors hover:bg-neutral-50"
-        >
-          Edit Course
-        </button>
-        <button
-          type="button"
-          className="rounded-md bg-[#e0791a] px-3 py-2 text-[11px] font-medium text-white transition-colors hover:bg-[#c96a12]"
-        >
-          Assign Evaluation
-        </button>
       </div>
     </section>
   )
 }
 
-function SectionsCard({ course }: { course: Course }) {
+function SectionsCard({ course, term }: { course: Course; term: string }) {
   const [sort, setSort] = useState<SectionSort>('number')
   const sections = [...course.sections].sort(SECTION_SORTS[sort].compare)
 
@@ -303,7 +319,7 @@ function SectionsCard({ course }: { course: Course }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-neutral-900">Current Sections &amp; Instructors</h2>
-          <p className="text-[10px] text-neutral-500">{TERM} · who is teaching this course right now</p>
+          <p className="text-[10px] text-neutral-500">{term} · who is teaching this course right now</p>
         </div>
         <div className="flex items-center gap-4 text-[11px]">
           <label className="flex items-center gap-1 text-neutral-500">
@@ -320,9 +336,6 @@ function SectionsCard({ course }: { course: Course }) {
               ))}
             </select>
           </label>
-          <a href="#" onClick={(e) => e.preventDefault()} className="text-[#e0791a] hover:underline">
-            Manage sections →
-          </a>
         </div>
       </div>
 
@@ -331,24 +344,15 @@ function SectionsCard({ course }: { course: Course }) {
           <article key={section.number} className="rounded-md border border-neutral-200 bg-neutral-50 p-2.5">
             <h3 className="text-[10px] text-neutral-600">Section {section.number}</h3>
             <div className="mt-2 flex items-center gap-2">
-              <span className={`h-6 w-6 shrink-0 rounded-full ${LEVEL_COLORS[section.rank]}`} aria-hidden="true" />
+              <span className="h-6 w-6 shrink-0 rounded-full bg-[#1c4532]" aria-hidden="true" />
               <div className="min-w-0">
                 <p className="truncate text-[11px] font-semibold text-neutral-900">{section.instructor}</p>
-                <p className="text-[9px] text-neutral-500">{section.rank}</p>
               </div>
             </div>
             <p className="mt-2 text-[10px] text-neutral-900">{section.days}</p>
             <p className="text-[10px] text-neutral-600">
               {formatTime(section.start)}–{formatTime(section.end)}
             </p>
-            <p className="text-[10px] text-neutral-600">
-              Enrolled {section.enrolled} / {section.capacity}
-            </p>
-            <span
-              className={`mt-2 inline-block rounded-full px-2 py-0.5 text-[9px] font-medium text-white ${SECTION_BADGES[section.tone]}`}
-            >
-              {section.status}
-            </span>
           </article>
         ))}
       </div>
@@ -356,7 +360,7 @@ function SectionsCard({ course }: { course: Course }) {
   )
 }
 
-function WeeklySchedule({ course }: { course: Course }) {
+function WeeklySchedule({ course, term }: { course: Course; term: string }) {
   const instructors = instructorsOf(course)
   const colorOf = (name: string) => INSTRUCTOR_PALETTE[instructors.indexOf(name) % INSTRUCTOR_PALETTE.length]
 
@@ -372,7 +376,7 @@ function WeeklySchedule({ course }: { course: Course }) {
         <div>
           <h2 className="text-sm font-semibold text-neutral-900">Weekly Schedule</h2>
           <p className="text-[10px] text-neutral-500">
-            All {course.code} sections · {TERM}
+            All {course.code} sections · {term}
           </p>
         </div>
         <ul className="flex flex-wrap gap-3 text-[10px] text-neutral-600">
@@ -421,12 +425,12 @@ function WeeklySchedule({ course }: { course: Course }) {
                   return (
                     <div
                       key={s.number}
-                      title={`Sec ${s.number} · ${s.instructor} · ${formatTime(s.start)}–${formatTime(s.end)} · ${s.room}`}
+                      title={`Sec ${s.number} · ${s.instructor} · ${formatTime(s.start)}–${formatTime(s.end)}`}
                       className="absolute inset-x-0.5 overflow-hidden rounded px-1 py-0.5 text-white"
                       style={{ top, height: blockHeight, backgroundColor: colorOf(s.instructor) }}
                     >
                       <p className="truncate text-[9px] font-semibold">Sec {s.number}</p>
-                      <p className="truncate text-[8px] opacity-80">{s.room}</p>
+                      <p className="truncate text-[8px] opacity-80">{s.instructor}</p>
                     </div>
                   )
                 })}
@@ -434,73 +438,6 @@ function WeeklySchedule({ course }: { course: Course }) {
           ))}
         </div>
       </div>
-    </section>
-  )
-}
-
-function HistoryCard({ course }: { course: Course }) {
-  const [sort, setSort] = useState<{ key: 'semester' | 'instructor'; dir: 'asc' | 'desc' }>({
-    key: 'semester',
-    dir: 'desc',
-  })
-
-  const rows = [...course.history].sort((a, b) => {
-    const cmp =
-      sort.key === 'semester' ? semesterValue(a) - semesterValue(b) : a.instructor.localeCompare(b.instructor)
-    return sort.dir === 'asc' ? cmp : -cmp
-  })
-
-  const toggleSort = (key: 'semester' | 'instructor') =>
-    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }))
-
-  const semesterCount = new Set(course.history.map((h) => `${h.term} ${h.year}`)).size
-
-  return (
-    <section className="min-w-0 rounded-lg border border-neutral-200 bg-white p-4">
-      <h2 className="text-sm font-semibold text-neutral-900">Historical Instructors</h2>
-      <p className="text-[10px] text-neutral-500">From UTD CourseBook · last {semesterCount} semesters</p>
-
-      <table className="mt-3 w-full text-[10px]">
-        <thead>
-          <tr className="bg-neutral-100 text-neutral-600">
-            {(['semester', 'instructor'] as const).map((key) => {
-              const active = sort.key === key
-              return (
-                <th
-                  key={key}
-                  aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : undefined}
-                  className="px-1 py-1 text-left font-normal first:rounded-l"
-                >
-                  <button
-                    type="button"
-                    onClick={() => toggleSort(key)}
-                    className={`flex w-full items-center gap-1 rounded bg-white px-1.5 py-0.5 capitalize ${
-                      active ? 'font-medium text-neutral-900' : ''
-                    }`}
-                  >
-                    {key}
-                    <span className={active ? 'text-[#e0791a]' : ''} aria-hidden="true">
-                      {active ? (sort.dir === 'asc' ? '↑' : '↓') : '↕'}
-                    </span>
-                  </button>
-                </th>
-              )
-            })}
-            <th className="rounded-r px-2 py-1 text-right font-normal">Sections</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={`${row.term}-${row.year}-${row.instructor}`} className="border-b border-neutral-100">
-              <td className="px-2 py-1.5 text-neutral-600">
-                {row.term} {row.year}
-              </td>
-              <td className="px-2 py-1.5 font-medium text-neutral-900">{row.instructor}</td>
-              <td className="px-2 py-1.5 text-right text-neutral-900">{row.sections}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </section>
   )
 }

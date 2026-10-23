@@ -1,181 +1,174 @@
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
+import { getCommitteeOverview, hireLevel } from '../api/committee'
+import type { CommitteeOverview } from '../api/committee'
 import EvaluationsCard from '../components/EvaluationsTable'
+import { MockDataBadge, MockDataNote } from '../components/MockData'
+import type { HireLevel, Kpi } from '../data/dashboardMock'
 import { KPIS } from '../data/dashboardMock'
 import {
   CYCLE_COMPLETION,
-  CYCLE_SUMMARY,
   ELIGIBILITY,
   OBSERVER_WORKLOAD,
-  PARTICIPATION,
-  PARTICIPATION_TARGET,
 } from '../data/evaluationsMock'
-import type { CompletionSegment } from '../data/evaluationsMock'
 import { KPI_ACCENTS } from '../theme'
 
-const SEGMENT_COLORS: Record<CompletionSegment, string> = {
-  Completed: 'bg-[#3f8a55]',
-  Scheduled: 'bg-[#e0791a]',
-  Overdue: 'bg-[#b3261e]',
-  Unmatched: 'bg-neutral-500',
-}
-
-/** Bar color by observations per observer: idle, healthy, heavy, overloaded. */
-const WORKLOAD_COLORS = ['bg-neutral-200', 'bg-[#13251c]', 'bg-[#1c4532]', 'bg-[#c4561a]', 'bg-[#b3261e]']
+type DisplayKpi = Kpi & { mock?: boolean }
 
 function EvaluationsPage() {
+  const [data, setData] = useState<CommitteeOverview | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    getCommitteeOverview(controller.signal)
+      .then(setData)
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return
+        setError(err instanceof Error ? err.message : 'Failed to load evaluations')
+      })
+    return () => controller.abort()
+  }, [])
+
+  const term = data?.cycle ? `${data.cycle.semester} ${data.cycle.year}` : '—'
+  const due = data?.due.length ?? 0
+  const overdue = data?.overdue.length ?? 0
+  const unmatched = data?.noMatchCount ?? 0
+  const signedUp = data?.signups?.signup_count
+  const matches = data?.signups?.signups.reduce((sum, s) => sum + s.observers.length, 0)
+  const kpis: DisplayKpi[] = [
+    {
+      label: 'Overdue Evaluations',
+      detail: 'KPI 1.2',
+      value: String(overdue),
+      accent: overdue > 0 ? 'red' : 'green',
+    },
+    {
+      label: 'Participation Rate',
+      detail: signedUp === undefined ? 'KPI 2.1 · unavailable' : `KPI 2.1 · ${signedUp} / ${due} due`,
+      value: due === 0 || signedUp === undefined ? '—' : `${Math.round((signedUp / due) * 100)}%`,
+      accent: 'black',
+    },
+    {
+      label: 'List sufficiency',
+      detail: matches === undefined ? 'KPI 3a · unavailable' : `KPI 3a · ${matches} matches / ${signedUp} sign-ups`,
+      value: signedUp && signedUp > 0 && matches !== undefined ? (matches / signedUp).toFixed(1) : '—',
+      accent: 'green',
+    },
+    {
+      label: 'Unmatched faculty',
+      detail: 'No eligible observers',
+      value: String(unmatched),
+      accent: unmatched > 0 ? 'orange' : 'green',
+    },
+    {
+      ...KPIS[0],
+      mock: true,
+      detail: 'KPI 1a · mock · no generator yet',
+    },
+  ]
+
   return (
     <main className="min-w-0 flex-1 px-6 py-7">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold text-neutral-900">Evaluations</h1>
           <p className="mt-1 text-xs text-neutral-500">
-            Fall 2026 cycle · {CYCLE_SUMMARY.facultyDue} faculty due · {CYCLE_SUMMARY.overdue} overdue ·{' '}
-            {CYCLE_SUMMARY.unmatched} unmatched · Last synced 2 min ago
+            {term} cycle · {due} faculty due · {overdue} overdue · {unmatched} unmatched
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 transition-colors hover:bg-neutral-50"
-          >
-            Export Report
-          </button>
-          <button
-            type="button"
-            className="rounded-md bg-[#e0791a] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[#c96a12]"
-          >
-            + Schedule Evaluation
-          </button>
-        </div>
       </header>
+      {error && <p className="mt-3 text-[11px] text-[#b3261e]">{error}</p>}
 
       <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-        {KPIS.map((kpi) => (
+        {kpis.map((kpi) => (
           <section key={kpi.label} className="rounded-lg border border-neutral-200 bg-white px-3.5 py-3.5">
             <span className={`block h-0.5 w-5 rounded ${KPI_ACCENTS[kpi.accent]}`} aria-hidden="true" />
-            <h2 className="mt-2.5 text-[11px] text-neutral-600">{kpi.label}</h2>
+            <h2 className="mt-2.5 flex items-center gap-1.5 text-[11px] text-neutral-600">
+              {kpi.label}
+              {kpi.mock && <MockDataBadge />}
+            </h2>
             <p className="mt-1 text-2xl font-semibold text-[#1c4532]">{kpi.value}</p>
-            <p className={`mt-1 text-[10px] ${kpi.detailPositive ? 'text-[#3f8a55]' : 'text-neutral-700'}`}>
-              {kpi.detail}
-            </p>
+            <p className="mt-1 text-[10px] text-neutral-700">{kpi.detail}</p>
           </section>
         ))}
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_272px]">
-        <EvaluationsCard showRemind />
-        <StatisticsCard />
+        <EvaluationsCard rows={data?.rows ?? []} today={data?.cycle?.today} />
+        <StatisticsCard data={data} />
       </div>
     </main>
   )
 }
 
-function StatisticsCard() {
-  const totalDue = CYCLE_COMPLETION.reduce((sum, s) => sum + s.count, 0)
-  const completed = CYCLE_COMPLETION.find((s) => s.segment === 'Completed')!.count
-  const decisions = ELIGIBILITY.correct + ELIGIBILITY.flaggedEarly + ELIGIBILITY.missed
-  const observers = OBSERVER_WORKLOAD.reduce((sum, w) => sum + w.observers, 0)
-  const maxObservers = Math.max(...OBSERVER_WORKLOAD.map((w) => w.observers))
-  const unused = OBSERVER_WORKLOAD[0].observers
-  const overloaded = OBSERVER_WORKLOAD[OBSERVER_WORKLOAD.length - 1].observers
+function StatisticsCard({ data }: { data: CommitteeOverview | null }) {
+  const dueByLevel = countsByHireLevel(data?.due ?? [])
 
   return (
     <section className="min-w-0 rounded-lg border border-neutral-200 bg-white p-4">
       <h2 className="text-sm font-semibold text-neutral-900">Evaluation Statistics</h2>
-      <p className="mt-0.5 text-[10px] text-neutral-500">Fall 2026 cycle · breakdown behind the KPIs above</p>
+      <p className="mt-0.5 text-[10px] text-neutral-500">Hire-level due counts from the API. Other charts are placeholders.</p>
 
-      <StatSection title="Cycle completion" meta={`${totalDue} faculty due · KPI 1.2`}>
-        <p className="text-neutral-900">
-          <span className="text-2xl font-semibold">{completed}</span>{' '}
-          <span className="text-[10px] text-neutral-500">
-            of {totalDue} complete · {Math.round((completed / totalDue) * 100)}%
-          </span>
-        </p>
-        <div className="mt-2 flex h-1.5 gap-0.5" role="img" aria-label="Cycle completion breakdown">
-          {CYCLE_COMPLETION.map((s, i) => (
-            <span
-              key={s.segment}
-              className={`h-full ${SEGMENT_COLORS[s.segment]} ${i === 0 ? 'rounded-l-full' : ''} ${
-                i === CYCLE_COMPLETION.length - 1 ? 'rounded-r-full' : ''
-              }`}
-              style={{ width: `${(s.count / totalDue) * 100}%` }}
-            />
-          ))}
-        </div>
-        <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-neutral-600">
-          {CYCLE_COMPLETION.map((s) => (
-            <li key={s.segment} className="flex items-center gap-1">
-              <span className={`h-1.5 w-1.5 rounded-full ${SEGMENT_COLORS[s.segment]}`} aria-hidden="true" />
-              {s.segment} {s.count}
+      <StatSection title="Faculty due by hire level" meta="Executive dashboard">
+        <ul className="space-y-2">
+          {dueByLevel.map((row) => (
+            <li key={row.level} className="flex justify-between text-[11px]">
+              <span className="text-neutral-900">{row.level}</span>
+              <span className="text-neutral-600">{row.count}</span>
             </li>
           ))}
         </ul>
       </StatSection>
 
-      <StatSection title="Eligibility accuracy" meta={`${decisions} decisions · KPI 1.1`}>
-        <div className="grid grid-cols-3 gap-1.5">
-          <EligibilityTile label="Correct" value={ELIGIBILITY.correct} color="text-[#1c4532]" />
-          <EligibilityTile label="Flagged early" value={ELIGIBILITY.flaggedEarly} color="text-[#e0791a]" />
-          <EligibilityTile label="Missed" value={ELIGIBILITY.missed} color="text-[#b3261e]" />
-        </div>
-      </StatSection>
-
-      <StatSection title="Participation by hire level" meta="KPI 2.1">
-        <ul className="space-y-2">
-          {PARTICIPATION.map((p) => {
-            const share = p.participating / p.total
-            return (
-              <li key={p.level}>
-                <div className="flex justify-between text-[10px]">
-                  <span className="text-neutral-900">{p.level}</span>
-                  <span className="text-neutral-600">
-                    {p.participating} / {p.total} · {Math.round(share * 100)}%
-                  </span>
-                </div>
-                <div
-                  className="mt-1 h-1.5 rounded-full bg-neutral-200"
-                  role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={p.total}
-                  aria-valuenow={p.participating}
-                  aria-label={`${p.level} participation`}
-                >
-                  <div
-                    className={`h-1.5 rounded-full ${share < PARTICIPATION_TARGET ? 'bg-[#e0791a]' : 'bg-[#1c4532]'}`}
-                    style={{ width: `${share * 100}%` }}
-                  />
-                </div>
-              </li>
-            )
-          })}
+      <StatSection title="Unmatched faculty" meta="Observer-selection alerts">
+        <p className="text-2xl font-semibold text-[#1c4532]">{data?.noMatchCount ?? 0}</p>
+        <ul className="mt-2 space-y-1 text-[10px] text-neutral-600">
+          {(data?.alerts ?? []).map((alert) => (
+            <li key={alert.signup_id}>{alert.message}</li>
+          ))}
+          {(data?.alerts.length ?? 0) === 0 && <li>No alerts this cycle.</li>}
         </ul>
       </StatSection>
 
-      <StatSection title="Observer workload" meta={`${observers} available · KPI 2.2 & 2.3`}>
-        <div className="flex h-24 items-end gap-1.5" role="img" aria-label="Observers by number of assigned observations">
-          {OBSERVER_WORKLOAD.map((w, i) => (
-            <div key={w.assigned} className="flex flex-1 flex-col items-center justify-end gap-1">
-              <span className="text-[10px] font-semibold text-neutral-900">{w.observers}</span>
-              <span
-                className={`w-full rounded-sm ${WORKLOAD_COLORS[i]}`}
-                style={{ height: `${(w.observers / maxObservers) * 56}px` }}
-              />
-            </div>
+      <StatSection title="Cycle completion" meta="Mock data">
+        <MockDataNote>No completion API yet.</MockDataNote>
+        <ul className="mt-2 space-y-1 text-[10px] text-neutral-600">
+          {CYCLE_COMPLETION.map((row) => (
+            <li key={row.segment} className="flex justify-between">
+              <span>{row.segment}</span>
+              <span>{row.count}</span>
+            </li>
           ))}
-        </div>
-        <div className="mt-1 flex gap-1.5">
-          {OBSERVER_WORKLOAD.map((w) => (
-            <span key={w.assigned} className="flex-1 text-center text-[9px] text-neutral-500">
-              {w.assigned}
-            </span>
-          ))}
-        </div>
-        <p className="mt-2 text-[9px] text-neutral-500">
-          per observer · {unused} unused · {overloaded} overloaded (4+)
+        </ul>
+      </StatSection>
+
+      <StatSection title="Eligibility accuracy" meta="Mock data">
+        <MockDataNote>KPI 1a is not generated yet.</MockDataNote>
+        <p className="mt-1 text-[11px] text-neutral-700">
+          {ELIGIBILITY.correct} correct · {ELIGIBILITY.flaggedEarly} flagged · {ELIGIBILITY.missed} missed
         </p>
+      </StatSection>
+
+      <StatSection title="Observer workload" meta="Mock data">
+        <MockDataNote>No assignment-count API yet.</MockDataNote>
+        <ul className="mt-2 space-y-1 text-[10px] text-neutral-600">
+          {OBSERVER_WORKLOAD.map((row) => (
+            <li key={row.assigned} className="flex justify-between">
+              <span>{row.assigned} assigned</span>
+              <span>{row.observers} observers</span>
+            </li>
+          ))}
+        </ul>
       </StatSection>
     </section>
   )
+}
+
+function countsByHireLevel(professors: CommitteeOverview['due']) {
+  const counts: Record<HireLevel, number> = { Assistant: 0, Associate: 0, Full: 0, Lecturer: 0 }
+  for (const professor of professors) counts[hireLevel(professor.current_level)] += 1
+  return (Object.entries(counts) as [HireLevel, number][]).map(([level, count]) => ({ level, count }))
 }
 
 function StatSection({ title, meta, children }: { title: string; meta: string; children: ReactNode }) {
@@ -186,15 +179,6 @@ function StatSection({ title, meta, children }: { title: string; meta: string; c
         <span className="text-[9px] text-neutral-500">{meta}</span>
       </div>
       {children}
-    </div>
-  )
-}
-
-function EligibilityTile({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className="rounded-md bg-neutral-100 px-2 py-1.5">
-      <p className={`text-base font-semibold ${color}`}>{value}</p>
-      <p className="text-[9px] text-neutral-500">{label}</p>
     </div>
   )
 }

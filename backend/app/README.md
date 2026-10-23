@@ -59,6 +59,10 @@ Same tables as current-semester classes. `/classes` is unchanged.
 - `GET /api/courses/{course_id}` — one course
 - `GET /api/observees/{professor_id}/teaching-history` — that professor's sections grouped by term (seed data is only Fall 2026)
 
+### CourseBook ingest
+
+`POST /api/coursebook/ingest` pulls UTD CourseBook through the Nebula Labs API into `Department`, `AcademicTerm`, `Courses`, `Sections`, `Professors`, and `TeachingAssignment`. Optional `?prefix=CS` and `?term=26F` (defaults to the current evaluation-cycle term). Needs `NEBULALABS_API_KEY` and `ANONYMIZATION_KEY`. A failed pull leaves existing rows unchanged (`502`/`503`).
+
 ### Observee signup and observer pool (`AHC-224` + `AHC-226` + `AHC-227`)
 
 `api/observee_signup.py`:

@@ -6,9 +6,8 @@ export const TEACHER_TODAY = '2026-10-20'
 
 export const TEACHER_PROFILE = {
   name: 'Professor A',
-  department: 'Computer Science · Erik Jonsson School',
+  department: 'Computer Science',
   rank: 'Associate Professor',
-  track: 'Tenure-track',
   evaluationCycle: 'Every 2 years',
   nextEvaluation: 'Spring 2027',
   evaluationsGiven: '4 this year',
@@ -68,7 +67,7 @@ export const RECEIVED_REPORTS: Record<number, ReceivedReport> = {
 export type Weekday ='Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri'
 
 export interface WeeklyBlock {
-  /** Course number, e.g. "CS 3345"; omitted for office hours. */
+  /** Course number, e.g. "CS 3345". */
   course: string | null
   /** Full course name, used to match observations to this class. */
   courseName: string | null
@@ -78,17 +77,15 @@ export interface WeeklyBlock {
   room: string | null
 }
 
-/** Professor A's recurring Fall 2026 schedule: 4 sections plus office hours. */
+/** Professor A's recurring Fall 2026 schedule. */
 export const WEEKLY_SCHEDULE: WeeklyBlock[] = [
   { course: 'CS 3345', courseName: 'CS 3345 Data Structures', days: ['Mon', 'Wed'], start: '10:00', end: '11:15', room: 'ECSS 2.410' },
   { course: 'CS 3345', courseName: 'CS 3345 Data Structures', days: ['Mon', 'Wed'], start: '13:00', end: '14:15', room: 'ECSS 2.410' },
   { course: 'CS 2336', courseName: 'CS 2336 Object-Oriented Programming', days: ['Tue', 'Thu'], start: '13:00', end: '14:15', room: 'ECSN 2.120' },
   { course: 'CS 4348', courseName: 'CS 4348 Operating Systems', days: ['Mon', 'Wed'], start: '14:30', end: '15:45', room: 'ECSS 2.306' },
-  { course: null, courseName: null, days: ['Tue'], start: '09:00', end: '10:00', room: null },
-  { course: null, courseName: null, days: ['Fri'], start: '11:00', end: '12:00', room: null },
 ]
 
-/** Contact and appointment details shown on the My Profile page. */
+/** Appointment details shown on the My Profile page. */
 export const PROFILE_DETAILS = {
   contact: [
     ['Office', 'ECSS 4.702'],
@@ -121,7 +118,7 @@ export interface CurrentCourse {
   capacity: number
 }
 
-/** Fall 2026 sections, as pulled from UTD CourseBook. */
+/** Fall 2026 sections. Rooms and enrollment are not in the database. */
 export const CURRENT_COURSES: CurrentCourse[] = [
   { course: 'CS 3345', title: 'Data Structures & Algorithm Analysis', section: '001', days: 'MW', start: '10:00', end: '11:15', room: 'ECSS 2.410', enrolled: 118, capacity: 120 },
   { course: 'CS 3345', title: 'Data Structures & Algorithm Analysis', section: '002', days: 'MW', start: '13:00', end: '14:15', room: 'ECSS 2.410', enrolled: 104, capacity: 120 },

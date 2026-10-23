@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { CYCLE_START, REPORT_SUMMARY, REPORTS } from '../data/reportsMock'
 import type { ReportOutcome, ReportRow, ReportStatus } from '../data/reportsMock'
 import type { FacultyLevel } from '../data/facultyMock'
+import { MockDataNote } from '../components/MockData'
 import { downloadCsv } from '../utils/csv'
 
 const PAGE_SIZE = 12
@@ -86,8 +87,8 @@ function formatDate(date: string, withYear: boolean) {
 function exportReports(rows: ReportRow[]) {
   downloadCsv(
     'reports-fall-2026.csv',
-    ['Professor', 'Email', 'Level', 'Report', 'Details', 'Date', 'Outcome', 'Status'],
-    rows.map((r) => [r.professor, r.email, r.level, r.reportType ?? '', r.reportDetail, r.date ?? '', r.outcome ?? '', r.status]),
+    ['Professor', 'Level', 'Report', 'Details', 'Date', 'Outcome', 'Status'],
+    rows.map((r) => [r.professor, r.level, r.reportType ?? '', r.reportDetail, r.date ?? '', r.outcome ?? '', r.status]),
   )
 }
 
@@ -96,7 +97,6 @@ function ReportsPage() {
   const [filter, setFilter] = useState<FilterKey>('all')
   const [sort, setSort] = useState<Sort>(SORT_PRESETS[0].sort)
   const [page, setPage] = useState(1)
-  const [reminded, setReminded] = useState<Set<number>>(() => new Set())
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -104,7 +104,7 @@ function ReportsPage() {
     return REPORTS.filter(
       (r) =>
         match(r) &&
-        (!q || [r.professor, r.email, r.reportDetail].some((text) => text.toLowerCase().includes(q))),
+        (!q || [r.professor, r.reportDetail].some((text) => text.toLowerCase().includes(q))),
     ).sort((a, b) => compare(a, b, sort))
   }, [search, filter, sort])
 
@@ -130,22 +130,15 @@ function ReportsPage() {
             {REPORT_SUMMARY.faculty} faculty · Fall 2026 · {REPORT_SUMMARY.onFile} reports on file ·{' '}
             {REPORT_SUMMARY.awaitingSignOff} awaiting sign-off · {REPORT_SUMMARY.overdue} reports overdue
           </p>
+          <MockDataNote>Signed observation reports have no API yet.</MockDataNote>
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => exportReports(rows)}
-            className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 transition-colors hover:bg-neutral-50"
-          >
-            Export CSV
-          </button>
-          <button
-            type="button"
-            className="rounded-md bg-[#e0791a] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[#c96a12]"
-          >
-            Download All PDFs
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => exportReports(rows)}
+          className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 transition-colors hover:bg-neutral-50"
+        >
+          Export CSV
+        </button>
       </header>
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
@@ -233,7 +226,6 @@ function ReportsPage() {
                     </th>
                   )
                 })}
-                <th className="w-24" aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
@@ -244,7 +236,6 @@ function ReportsPage() {
                       <span className={`h-7 w-7 shrink-0 rounded-full ${AVATAR_COLORS[row.avatar]}`} aria-hidden="true" />
                       <div>
                         <p className="text-xs font-semibold text-neutral-900">{row.professor}</p>
-                        <p className="text-[10px] text-neutral-500">{row.email}</p>
                       </div>
                     </div>
                   </td>
@@ -285,27 +276,11 @@ function ReportsPage() {
                       {row.status}
                     </span>
                   </td>
-                  <td className="pr-4">
-                    <div className="flex items-center justify-end gap-2">
-                      <RowAction
-                        row={row}
-                        reminded={reminded.has(row.id)}
-                        onRemind={() => setReminded((prev) => new Set(prev).add(row.id))}
-                      />
-                      <button
-                        type="button"
-                        aria-label={`More actions for ${row.professor}`}
-                        className="rounded px-1 text-neutral-500 hover:bg-neutral-100"
-                      >
-                        ···
-                      </button>
-                    </div>
-                  </td>
                 </tr>
               ))}
               {visible.length === 0 && (
                 <tr>
-                  <td colSpan={COLUMNS.length + 1} className="py-10 text-center text-neutral-500">
+                  <td colSpan={COLUMNS.length} className="py-10 text-center text-neutral-500">
                     No reports match these filters.
                   </td>
                 </tr>
@@ -354,32 +329,6 @@ function ReportsPage() {
         </footer>
       </section>
     </main>
-  )
-}
-
-function RowAction({ row, reminded, onRemind }: { row: ReportRow; reminded: boolean; onRemind: () => void }) {
-  const base = 'text-[11px] font-medium whitespace-nowrap'
-  if (row.status === 'Report overdue') {
-    return (
-      <button
-        type="button"
-        disabled={reminded}
-        onClick={onRemind}
-        aria-label={`Send reminder for ${row.professor}`}
-        className={`${base} text-[#1c4532] hover:underline disabled:text-neutral-400 disabled:no-underline`}
-      >
-        {reminded ? 'Reminded' : 'Remind'}
-      </button>
-    )
-  }
-  return (
-    <button
-      type="button"
-      aria-label={`${row.status === 'No report' ? 'Assign observer for' : 'View report for'} ${row.professor}`}
-      className={`${base} text-[#1c4532] hover:underline`}
-    >
-      {row.status === 'No report' ? 'Assign' : 'View'}
-    </button>
   )
 }
 
