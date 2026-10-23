@@ -84,14 +84,14 @@ function LoginPage({ onLogin }: LoginPageProps) {
 
           <div className="mt-5">
             <label htmlFor="email" className="text-xs text-neutral-800">
-              UTD email
+              Email
             </label>
             <input
               id="email"
               type="email"
               autoComplete="email"
               required
-              placeholder="netid@utdallas.edu"
+              placeholder="you@example.com"
               value={email}
               onChange={(e) => {
                 setEmail(e.target.value)
@@ -139,19 +139,6 @@ function LoginPage({ onLogin }: LoginPageProps) {
             <span aria-hidden="true">→</span>
           </button>
         </form>
-
-        <div className="my-4 flex items-center gap-3 text-[10px] text-neutral-400">
-          <span className="h-px flex-1 bg-neutral-200" />
-          or
-          <span className="h-px flex-1 bg-neutral-200" />
-        </div>
-
-        <button
-          type="button"
-          className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-xs font-medium text-neutral-900 transition-colors hover:bg-neutral-50"
-        >
-          Continue with UTD SSO
-        </button>
 
         <div className="mt-5 rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-3 py-2.5 text-[11px] text-neutral-600">
           <p className="font-medium text-neutral-800">Demo login ({ROLES[role].label})</p>
