@@ -255,6 +255,8 @@ CREATE TABLE Observation (
     Status VARCHAR(20),
     Signee VARCHAR(255),
     Observer VARCHAR(255),
+    ObserverSigned BOOLEAN NOT NULL DEFAULT FALSE,
+    ObserveeSigned BOOLEAN NOT NULL DEFAULT FALSE;
     Notes Text,
     ObserveeID INT NOT NULL,
     ObservationTime TIME,
@@ -437,8 +439,6 @@ CREATE TABLE PostObservationSurveyResponse (
     ProcessStatus VARCHAR(50),
     Difficulties TEXT,
     ImprovementConditions TEXT,
-    ObserverSigned BOOLEAN NOT NULL DEFAULT FALSE,
-    ObserveeSigned BOOLEAN NOT NULL DEFAULT FALSE;
     foreign key (CycleID) references EvaluationCycle(CycleID),
     foreign key (ProfessorID) references Professors(ProfessorID),
     foreign key (SignupID) references ObservationSignup(SignupID)
