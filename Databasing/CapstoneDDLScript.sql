@@ -455,6 +455,7 @@ CREATE TABLE PostObservationSurveyResponse (
     ProcessStatus VARCHAR(50),
     Difficulties TEXT,
     ImprovementConditions TEXT,
+    NotificationSent NOT NULL,
     ObserverSigned BOOLEAN NOT NULL DEFAULT FALSE,
     ObserveeSigned BOOLEAN NOT NULL DEFAULT FALSE;
     foreign key (CycleID) references EvaluationCycle(CycleID),
