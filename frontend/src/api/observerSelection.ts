@@ -64,15 +64,15 @@ export function getObserverAlerts(signal?: AbortSignal) {
 }
 
 export function startObserverSelection(signal?: AbortSignal) {
-  return apiPost<ObserverSelectionResult>('/api/observer-selection/start', undefined, signal)
+  return apiPost<ObserverSelectionResult>('/api/observer-selection/start', undefined, undefined, signal)
 }
 
 export function notifyObservees(signupId?: number, signal?: AbortSignal) {
   return apiPost<ObserverSelectionResult>(
     '/api/observer-selection/notify',
     undefined,
-    signal,
     signupId === undefined ? undefined : { signup_id: signupId },
+    signal,
   )
 }
 

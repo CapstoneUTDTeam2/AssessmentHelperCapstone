@@ -28,7 +28,7 @@ export function updateCycleDeadlines(
   body: Partial<Record<'signup' | 'observation' | 'post_observation_feedback' | 'app_feedback', string>>,
   signal?: AbortSignal,
 ) {
-  return apiPut<EvaluationCycle>(`/api/evaluation-cycles/${cycleId}/deadlines`, body, signal)
+  return apiPut<EvaluationCycle>(`/api/evaluation-cycles/${cycleId}/deadlines`, body, undefined, signal)
 }
 
 export function deadlineDate(cycle: EvaluationCycle, key: string) {

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { SignupActions, SignupStatus } from '../components/SignupActions'
 import { useSignups } from '../hooks/useSignups'
+import { MockDataBadge, MockDataNote } from '../components/MockData'
 import SortHeader from '../components/SortHeader'
 import {
   EVALUATION_LOG,
@@ -91,6 +92,7 @@ function TeacherEvaluationsPage({ navigate }: PageProps) {
   const [confirmedIds, setConfirmedIds] = useState<Set<number>>(() => new Set())
   const [offered, setOffered] = useState<Set<number>>(() => new Set())
   const [showHistory, setShowHistory] = useState(false)
+  const { cycle } = useSignups()
 
   const sessions = useMemo(
     () => UPCOMING.map((u) => (confirmedIds.has(u.id) ? { ...u, confirmed: true } : u)),
@@ -112,7 +114,7 @@ function TeacherEvaluationsPage({ navigate }: PageProps) {
         <div>
           <h1 className="text-xl font-semibold text-neutral-900">Evaluations</h1>
           <p className="mt-1 text-xs text-neutral-500">
-            Your evaluation cycle, evaluations you receive, and evaluations you give · Fall 2026
+            Your evaluation cycle, evaluations you receive, and evaluations you give · {cycle ? `${cycle.semester} ${cycle.year}` : '—'}
           </p>
           <SignupStatus />
         </div>
@@ -406,7 +408,6 @@ function UpcomingSessionsCard({
   onOpenReport,
   onOpenCalendar,
 }: {
-  today: string
   items: UpcomingEvaluation[]
   onConfirm: (id: number) => void
   onOpenReport: (id: number) => void

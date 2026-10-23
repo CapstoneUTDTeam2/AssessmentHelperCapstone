@@ -62,3 +62,8 @@ export function summarizeCatalog(catalog: CourseCatalog): CourseSummary {
 export async function getCourseSummary(signal?: AbortSignal) {
   return summarizeCatalog(await listCourses(signal))
 }
+
+// Older names, still used by the Course page.
+export type CourseInstructor = Instructor
+export type CourseSection = CatalogSection
+export const getCourses = listCourses

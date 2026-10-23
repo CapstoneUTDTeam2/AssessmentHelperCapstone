@@ -31,26 +31,7 @@ async function request<T>(url: string, init: RequestInit): Promise<T> {
     const body = await res.json().catch(() => null)
     throw new ApiError(res.status, body?.detail ?? res.statusText)
   }
-  const qs = params.toString()
-  const res = await fetch(qs ? `${path}?${qs}` : path, {
-    method: 'POST',
-    signal,
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
-  if (!res.ok) await parseError(res)
   if (res.status === 204) return undefined as T
-  return res.json() as Promise<T>
-}
-
-export async function apiPut<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(path, {
-    method: 'PUT',
-    signal,
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
-  if (!res.ok) await parseError(res)
   return res.json() as Promise<T>
 }
 
