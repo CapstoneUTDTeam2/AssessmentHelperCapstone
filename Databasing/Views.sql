@@ -243,23 +243,12 @@ GROUP BY
     p.ProfessorName,
     ec.CycleID;
 
+
 -- Evaluation Dueness
+-- Evaluations are annual for Assistant Professors
+-- and biennial for Associate / Full Professors.
+
 CREATE OR REPLACE VIEW FacultyEvaluationDue AS
-WITH CompletedEvaluations AS (
-    SELECT
-        o.ObserveeID AS ProfessorID,
-        MAX(t.YearNum) AS LastEvaluationYear
-    FROM Observation o
-    JOIN ObservationSignup os
-        ON os.SignupID = o.SignupID
-    JOIN EvaluationCycle ec
-        ON ec.CycleID = os.CycleID
-    JOIN AcademicTerm t
-        ON t.TermID = ec.TermID
-    WHERE o.Status = 'Completed'
-      AND o.CompletedDate IS NOT NULL
-    GROUP BY o.ObserveeID
-)
 SELECT
     ec.CycleID,
     term.Semester,
@@ -272,10 +261,8 @@ SELECT
     ce.LastEvaluationYear,
 
     CASE
-        WHEN p.CurrentLevel = 'Assistant'
-            THEN 1
-        WHEN p.CurrentLevel IN ('Associate', 'Full')
-            THEN 2
+        WHEN p.CurrentLevel = 'Assistant' THEN 1
+        WHEN p.CurrentLevel IN ('Associate', 'Full') THEN 2
         ELSE NULL
     END AS RequiredIntervalYears,
 
@@ -285,9 +272,15 @@ SELECT
             OR p.CurrentLevel IS NULL
             THEN NULL
 
+        -- Already completed an evaluation this year
+        WHEN ce.LastEvaluationYear = term.YearNum
+            THEN FALSE
+
+        -- No earlier completed evaluation
         WHEN ce.LastEvaluationYear IS NULL
             THEN TRUE
 
+        -- Required interval has passed
         WHEN term.YearNum - ce.LastEvaluationYear >=
             CASE
                 WHEN p.CurrentLevel = 'Assistant'
@@ -301,8 +294,17 @@ SELECT
 
 FROM Professors p
 CROSS JOIN EvaluationCycle ec
+
 JOIN AcademicTerm term
     ON term.TermID = ec.TermID
 
-LEFT JOIN CompletedEvaluations ce
-    ON ce.ProfessorID = p.ProfessorID;
+LEFT JOIN LATERAL (
+    SELECT
+        MAX(EXTRACT(YEAR FROM o.CompletedDate))::INT
+            AS LastEvaluationYear
+    FROM Observation o
+    WHERE o.ObserveeID = p.ProfessorID
+      AND o.Status = 'Completed'
+      AND o.CompletedDate IS NOT NULL
+      AND o.CompletedDate <= ec.ObservationDeadLine
+) ce ON TRUE;

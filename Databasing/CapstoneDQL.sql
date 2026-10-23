@@ -385,14 +385,314 @@ JOIN Professors p
 WHERE oe.CycleID = 1
 ORDER BY p.ProfessorName;
 
---Observers who havent entered any weekday availibility
+-- Observers enrolled but missing weekday availability
 SELECT
     p.ProfessorID,
     p.ProfessorName,
+    oe.CycleID,
     oe.EnrollmentDate,
     oe.Status
 FROM ObserverEnrollment oe
 JOIN Professors p
     ON p.ProfessorID = oe.ProfessorID
-WHERE oe.CycleID = 1
+WHERE oe.Status = 'Active'
+  AND NOT EXISTS (
+      SELECT 1
+      FROM ObserverAvailability oa
+      WHERE oa.ProfessorID = oe.ProfessorID
+        AND oa.CycleID = oe.CycleID
+  )
 ORDER BY p.ProfessorName;
+
+
+-- Active evaluation criteria for a template
+SELECT
+    ec.CriterionID,
+    ec.CriterionName,
+    ec.Description,
+    ec.DisplayOrder,
+    ecs.SectionName,
+    ec.IsRequired
+FROM EvaluationCriterion ec
+LEFT JOIN EvaluationCriterionSection ecs
+    ON ecs.SectionID = ec.SectionID
+WHERE ec.TemplateID = 1
+  AND ec.IsActive = TRUE
+ORDER BY
+    ecs.DisplayOrder NULLS LAST,
+    ec.DisplayOrder,
+    ec.CriterionID;
+
+
+-- Evaluation cycle configuration
+SELECT
+    ec.CycleID,
+    t.Semester,
+    t.YearNum,
+    ec.SignUpDeadLine,
+    ec.ObservationDeadLine,
+    ec.PostObservationFeedbackDeadLine,
+    ec.AppFeedbackDeadLine,
+    ot.TemplateID,
+    ot.TemplateVersion,
+    ot.IsLocked
+FROM EvaluationCycle ec
+JOIN AcademicTerm t
+    ON t.TermID = ec.TermID
+LEFT JOIN ObservationTemplate ot
+    ON ot.TemplateID = ec.TemplateID
+WHERE ec.CycleID = 1;
+
+
+
+-- Teacher Dashboard: Professor Profile
+SELECT
+    p.ProfessorID,
+    p.ProfessorName,
+    d.DepartmentName,
+    p.CurrentLevel,
+
+    CASE
+        WHEN p.CurrentLevel = 'Assistant'
+            THEN 'Annual'
+        WHEN p.CurrentLevel IN ('Associate', 'Full')
+            THEN 'Every 2 years'
+        ELSE 'Not specified'
+    END AS EvaluationFrequency,
+
+    (
+        SELECT COUNT(*)
+        FROM Observation o
+        WHERE o.ObserverProfessorID = p.ProfessorID
+          AND o.Status = 'Completed'
+    ) AS EvaluationsGiven,
+
+    (
+        SELECT MAX(o.CompletedDate)
+        FROM Observation o
+        WHERE o.ObserveeID = p.ProfessorID
+          AND o.Status = 'Completed'
+          AND o.CompletedDate IS NOT NULL
+    ) AS LastEvaluationDate
+
+FROM Professors p
+JOIN Department d
+    ON d.DepartmentID = p.ProfessorDepartment
+WHERE p.ProfessorID = 3;
+
+
+-- Teacher Dashboard: Upcoming Observations
+-- Includes both observer and observee roles
+SELECT
+    pod.ObservationID,
+    pod.SignupID,
+    pod.CycleID,
+
+    CASE
+        WHEN pod.ObserveeID = 3
+            THEN 'Being observed'
+        ELSE 'Observing'
+    END AS EvaluationType,
+
+    CASE
+        WHEN pod.ObserveeID = 3
+            THEN pod.ObserverName
+        ELSE pod.ObserveeName
+    END AS OtherProfessor,
+
+    pod.CourseCode,
+    pod.CourseName,
+    pod.SectionName,
+    pod.ScheduledDate,
+    pod.ScheduledTime,
+    pod.ObservationStatus,
+    pod.ObservationDeadLine
+
+FROM ProfessorObservationDashboard pod
+WHERE (
+    pod.ObserveeID = 3
+    OR pod.ObserverProfessorID = 3
+)
+AND pod.ScheduledDate >= CURRENT_DATE
+AND pod.ObservationStatus IS DISTINCT FROM 'Completed'
+
+ORDER BY
+    pod.ScheduledDate,
+    pod.ScheduledTime;
+
+
+-- Teacher Dashboard: Teaching schedule for current term
+SELECT
+    SectionID,
+    SectionName,
+    CourseCode,
+    CourseName,
+    MeetingDays,
+    StartTime,
+    EndTime
+FROM ProfessorCourseSchedule
+WHERE ProfessorID = 3
+  AND TermID = 1
+ORDER BY MeetingDays, StartTime;
+
+
+-- Teacher Dashboard: Evaluations scheduled this month
+-- Includes observing and being observed
+SELECT
+    COUNT(*) AS EvaluationsThisMonth
+FROM Observation o
+WHERE (
+    o.ObserveeID = 3
+    OR o.ObserverProfessorID = 3
+)
+AND o.ScheduledDate >= DATE_TRUNC('month', CURRENT_DATE)::DATE
+AND o.ScheduledDate <
+    (DATE_TRUNC('month', CURRENT_DATE)
+        + INTERVAL '1 month')::DATE;
+
+
+-- Teacher Evaluations: Evaluation requirement and progress
+SELECT
+    fed.ProfessorID,
+    fed.ProfessorName,
+    fed.CurrentLevel,
+    fed.CycleID,
+    fed.EvaluationYear,
+    fed.RequiredIntervalYears,
+    fed.LastEvaluationYear,
+    fed.IsDue,
+
+    COUNT(DISTINCT o.ObservationID)
+        FILTER (
+            WHERE o.Status = 'Completed'
+        ) AS EvaluationsReceived,
+
+    ec.ObservationDeadLine
+
+FROM FacultyEvaluationDue fed
+JOIN EvaluationCycle ec
+    ON ec.CycleID = fed.CycleID
+
+LEFT JOIN ObservationSignup os
+    ON os.ObserveeProfessorID = fed.ProfessorID
+   AND os.CycleID = fed.CycleID
+
+LEFT JOIN Observation o
+    ON o.SignupID = os.SignupID
+   AND o.ObserveeID = fed.ProfessorID
+
+WHERE fed.ProfessorID = 3
+  AND fed.CycleID = 1
+
+GROUP BY
+    fed.ProfessorID,
+    fed.ProfessorName,
+    fed.CurrentLevel,
+    fed.CycleID,
+    fed.EvaluationYear,
+    fed.RequiredIntervalYears,
+    fed.LastEvaluationYear,
+    fed.IsDue,
+    ec.ObservationDeadLine;
+
+
+-- Teacher Evaluations: Evaluation history
+-- Includes evaluations given and received
+SELECT
+    o.ObservationID,
+    o.CompletedDate AS EvaluationDate,
+
+    CASE
+        WHEN o.ObserveeID = 3
+            THEN 'Observed'
+        ELSE 'Observing'
+    END AS EvaluationType,
+
+    CASE
+        WHEN o.ObserveeID = 3
+            THEN observer.ProfessorName
+        ELSE observee.ProfessorName
+    END AS OtherProfessor,
+
+    c.CourseCode,
+    c.CourseName,
+    o.Status,
+    o.Notes
+
+FROM Observation o
+JOIN ObservationSignup os
+    ON os.SignupID = o.SignupID
+
+JOIN Professors observee
+    ON observee.ProfessorID = o.ObserveeID
+
+JOIN Professors observer
+    ON observer.ProfessorID = o.ObserverProfessorID
+
+JOIN Sections s
+    ON s.SectionID = os.SectionID
+
+JOIN Courses c
+    ON c.CourseID = s.CourseID
+
+WHERE (
+    o.ObserveeID = 3
+    OR o.ObserverProfessorID = 3
+)
+AND o.Status = 'Completed'
+
+ORDER BY
+    o.CompletedDate DESC,
+    o.ObservationID DESC;
+
+
+-- Teacher Evaluations: Eligible observers
+-- Same department and same course level,
+-- with existing eligibility and scheduling checks
+SELECT
+    e.ProfessorID,
+    p.ProfessorName,
+    p.CurrentLevel,
+    d.DepartmentName
+FROM get_eligible_observers(1) e
+JOIN Professors p
+    ON p.ProfessorID = e.ProfessorID
+JOIN Department d
+    ON d.DepartmentID = p.ProfessorDepartment
+ORDER BY p.ProfessorName;
+
+
+-- Teacher Evaluations: Incoming observation requests
+SELECT
+    RequestID,
+    SignupID,
+    ObserverProfessorID,
+    ObserveeName,
+    CourseCode,
+    CourseName,
+    SectionName,
+    MeetingDays,
+    StartTime,
+    EndTime,
+    RequestDate,
+    ExpirationDate,
+    ExpirationTime,
+    RequestStatus
+FROM ProfessorObserverInvitations
+WHERE ObserverProfessorID = 3
+ORDER BY
+    CASE WHEN RequestStatus = 'Pending' THEN 0 ELSE 1 END,
+    ExpirationDate,
+    ExpirationTime;
+
+
+-- Teacher Settings: Read-only professor profile
+SELECT
+    p.ProfessorID,
+    p.ProfessorName,
+    p.CurrentLevel,
+    d.DepartmentName
+FROM Professors p
+JOIN Department d
+    ON d.DepartmentID = p.ProfessorDepartment
+WHERE p.ProfessorID = 3;

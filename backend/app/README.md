@@ -59,6 +59,10 @@ Same tables as current-semester classes. `/classes` is unchanged.
 - `GET /api/courses/{course_id}` — one course
 - `GET /api/observees/{professor_id}/teaching-history` — that professor's sections grouped by term (seed data is only Fall 2026)
 
+### CourseBook ingest
+
+`POST /api/coursebook/ingest` pulls UTD CourseBook through the Nebula Labs API into `Department`, `AcademicTerm`, `Courses`, `Sections`, `Professors`, and `TeachingAssignment`. Optional `?prefix=CS` and `?term=26F` (defaults to the current evaluation-cycle term). Needs `NEBULALABS_API_KEY` and `ANONYMIZATION_KEY`. A failed pull leaves existing rows unchanged (`502`/`503`).
+
 ### Observee signup and observer pool (`AHC-224` + `AHC-226` + `AHC-227`)
 
 `api/observee_signup.py`:
@@ -74,13 +78,16 @@ Signing up also adds an `ObserverEnrollment` row, so signing up puts a professor
 
 ### Observer eligibility (`AHC-243`)
 
-`POST /api/match-observers` filters the observer pool. An observer is eligible only if they:
+`POST /api/match-observers` filters the observer pool. The rule comes from the database function `get_eligible_observers` (the same check `ObserverRequest` uses), so every endpoint agrees. An observer is eligible only if they:
 
-- signed up this cycle (in the pool)
+- are an active `ObserverEnrollment` this cycle (signing up enrolls you)
 - are not the observee
 - are in the same department
-- teach the same course level this term (first digit of the course code × 1000)
-- are free during that class time (no overlapping `MeetingDays` / `StartTime` / `EndTime`)
+- taught the same course level in the last four Fall/Spring semesters (first digit of the course number)
+- entered weekly availability (`ObserverAvailability`) covering the class time
+- are free on at least one of the observee's preferred dates (not marked unavailable, not teaching then)
+
+With a signup and no `requested_day` / `requested_time`, it calls `get_eligible_observers` directly. With a custom day or time, it applies the same rules to that day and time instead of the preferred dates.
 
 Body: `faculty_id`, optional `course_id` or `section_id` (defaults to the observee's signup), optional `requested_day` / `requested_time` (defaults to that section's meeting pattern). Returns up to 5 observers; if more than 5 qualify, 5 are chosen at random. `insufficient` is `true` when nobody qualifies.
 
@@ -104,6 +111,20 @@ Uses the same eligibility rules, once per `ObservationSignup`:
 - `GET /api/observees/{professor_id}/notifications` — the observee's "observer list is ready" notification with their saved list. Optional `?cycle_id=`.
 
 The list is saved once, so the committee, the notification, and `GET /api/observees/{professor_id}/signup` all show the same names.
+
+### Observer availability
+
+`api/observer_availability.py`. Observers enter when they can observe, which the eligibility rule needs:
+
+- `GET /api/observers/{professor_id}/availability` — weekly slots, unavailable dates, and observer enrollment status. Optional `?cycle_id=`.
+- `PUT /api/observers/{professor_id}/availability` — replaces them. Body: `weekly` (list of `weekday` `M`/`T`/`W`/`R`/`F`, `start_time`, `end_time`), `unavailable_dates` (list of `YYYY-MM-DD`), optional `cycle_id`. `400` for a bad weekday, a repeated weekday, start not before end, a past date, a date after the observation deadline, or once the observation deadline has passed. Saving also enrolls the professor as an observer if they weren't already.
+
+### Observer availability
+
+`api/observer_availability.py`. Observers enter when they can observe, which the eligibility rule needs:
+
+- `GET /api/observers/{professor_id}/availability` — weekly slots, unavailable dates, and observer enrollment status. Optional `?cycle_id=`.
+- `PUT /api/observers/{professor_id}/availability` — replaces them. Body: `weekly` (list of `weekday` `M`/`T`/`W`/`R`/`F`, `start_time`, `end_time`), `unavailable_dates` (list of `YYYY-MM-DD`), optional `cycle_id`. `400` for a bad weekday, a repeated weekday, start not before end, a past date, a date after the observation deadline, or once the observation deadline has passed. Saving also enrolls the professor as an observer if they weren't already.
 
 ### Evaluation cycle deadline handling (`AHC-223`)
 
@@ -188,6 +209,8 @@ curl -X POST http://127.0.0.1:8000/api/observer-selection/start
 curl http://127.0.0.1:8000/api/signups/3/observer-list
 curl -X POST http://127.0.0.1:8000/api/observer-selection/notify
 curl http://127.0.0.1:8000/api/observees/3/notifications
+curl http://127.0.0.1:8000/api/observers/1/availability
+curl http://127.0.0.1:8000/api/observers/1/availability
 ```
 
 Note: the sample cycle's signup deadline is 2026-09-15, so `POST /api/signups` returns the deadline error on the sample data until that date is moved forward, for example:

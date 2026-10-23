@@ -1,27 +1,22 @@
 import { useMemo, useState } from 'react'
-import type { KeyboardEvent } from 'react'
+import type { ReactNode } from 'react'
 import { SignupActions, SignupStatus } from '../components/SignupActions'
+import { useSignups } from '../hooks/useSignups'
 import SortHeader from '../components/SortHeader'
 import {
-  AVAILABLE_OBSERVERS,
   EVALUATION_LOG,
   EVALUATION_REQUIREMENT,
-  MY_LEVEL,
-  OBSERVER_REQUESTS,
-  TEACHER_PROFILE,
+  OPEN_SIGNUPS,
+  RECEIVED_REPORTS,
   TEACHER_TODAY,
   UPCOMING,
 } from '../data/teacherMock'
-import type { HistoryEntry, HistoryType, ObserverMatch, UpcomingEvaluation, UpcomingKind } from '../data/teacherMock'
+import type { HistoryEntry, HistoryType, UpcomingEvaluation } from '../data/teacherMock'
 import { useSortedRows } from '../hooks/useSortedRows'
 import type { Comparators } from '../hooks/useSortedRows'
 import { downloadCsv } from '../utils/csv'
+import { loadSignoff } from '../utils/signoffs'
 import type { PageProps } from '../pageProps'
-
-const KIND_BADGES: Record<UpcomingKind, string> = {
-  'Being observed': 'bg-[#e0791a] text-white',
-  Observing: 'bg-[#1c4532] text-white',
-}
 
 const HISTORY_BADGES: Record<HistoryType, string> = {
   Observing: 'bg-[#1c4532] text-white',
@@ -29,12 +24,11 @@ const HISTORY_BADGES: Record<HistoryType, string> = {
   Evaluation: 'bg-neutral-100 text-neutral-600',
 }
 
-const AVATARS = { green: 'bg-[#1c4532]', orange: 'bg-[#e0791a]' }
-
 const secondary =
-  'rounded-md border border-neutral-200 bg-white px-2.5 py-1.5 text-[10px] whitespace-nowrap text-neutral-900 transition-colors hover:bg-neutral-50'
+  'rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] font-medium whitespace-nowrap text-neutral-900 transition-colors hover:bg-neutral-50 disabled:text-neutral-400 disabled:hover:bg-white'
 const primary =
-  'rounded-md bg-[#e0791a] px-2.5 py-1.5 text-[10px] font-medium whitespace-nowrap text-white transition-colors hover:bg-[#c96a12]'
+  'rounded-md bg-[#c4561a] px-3 py-1.5 text-[11px] font-medium whitespace-nowrap text-white transition-colors hover:bg-[#a9481a]'
+const card = 'min-w-0 rounded-lg border border-neutral-200 bg-white p-4'
 
 function toDate(iso: string) {
   return new Date(`${iso}T00:00:00Z`)
@@ -44,6 +38,48 @@ function format(iso: string, options: Intl.DateTimeFormatOptions) {
   return toDate(iso).toLocaleDateString('en-US', { timeZone: 'UTC', ...options })
 }
 
+function daysBetween(from: string, to: string) {
+  return Math.round((toDate(to).getTime() - toDate(from).getTime()) / 86_400_000)
+}
+
+function clock(time: string) {
+  const [h, m] = time.split(':').map(Number)
+  return { text: `${h % 12 || 12}:${String(m).padStart(2, '0')}`, meridiem: h < 12 ? 'AM' : 'PM' }
+}
+
+/** "13:00", "14:15" → "1:00–2:15 PM"; "11:30", "12:45" → "11:30 AM–12:45 PM"; short drops AM/PM. */
+function timeRange(start: string, end: string, short = false) {
+  const a = clock(start)
+  const b = clock(end)
+  if (short) return `${a.text}–${b.text}`
+  return a.meridiem === b.meridiem ? `${a.text}–${b.text} ${b.meridiem}` : `${a.text} ${a.meridiem}–${b.text} ${b.meridiem}`
+}
+
+/** "CS 4348 Operating Systems" → "CS 4348". */
+function courseNumber(course: string) {
+  return course.split(' ').slice(0, 2).join(' ')
+}
+
+/** "tomorrow, Wed Oct 21", "today, …", or "Wed Oct 21". */
+function dueLabel(iso: string) {
+  const date = format(iso, { weekday: 'short', month: 'short', day: 'numeric' }).replace(',', '')
+  const days = daysBetween(TEACHER_TODAY, iso)
+  if (days === 0) return `today, ${date}`
+  if (days === 1) return `tomorrow, ${date}`
+  return date
+}
+
+/** A colleague has submitted their report on your class and it still needs your signature. */
+function awaitingMySignature(u: UpcomingEvaluation) {
+  return u.kind === 'Being observed' && Boolean(RECEIVED_REPORTS[u.id]) && !loadSignoff(u.id)
+}
+
+function monthsUntil(isoMonth: string) {
+  const [y, m] = isoMonth.split('-').map(Number)
+  const [ty, tm] = TEACHER_TODAY.split('-').map(Number)
+  return (y - ty) * 12 + (m - tm)
+}
+
 const HISTORY_COMPARATORS: Comparators<HistoryEntry, 'date' | 'type' | 'with' | 'status'> = {
   date: (a, b) => a.date.localeCompare(b.date),
   type: (a, b) => a.type.localeCompare(b.type),
@@ -51,323 +87,476 @@ const HISTORY_COMPARATORS: Comparators<HistoryEntry, 'date' | 'type' | 'with' | 
   status: (a, b) => a.status.localeCompare(b.status),
 }
 
-type Tab = 'upcoming' | 'history' | 'matching' | 'requests'
-type RequestAnswer = 'accepted' | 'declined'
-
 function TeacherEvaluationsPage({ navigate }: PageProps) {
-  const [tab, setTab] = useState<Tab>('upcoming')
   const [confirmedIds, setConfirmedIds] = useState<Set<number>>(() => new Set())
-  // Kept here so requests and answers survive switching tabs.
-  const [requested, setRequested] = useState<Set<number>>(() => new Set())
-  const [answers, setAnswers] = useState<Record<number, RequestAnswer>>({})
-  const upcoming = useMemo(
+  const [offered, setOffered] = useState<Set<number>>(() => new Set())
+  const [showHistory, setShowHistory] = useState(false)
+
+  const sessions = useMemo(
     () => UPCOMING.map((u) => (confirmedIds.has(u.id) ? { ...u, confirmed: true } : u)),
     [confirmedIds],
   )
+  const upcoming = sessions
+    .filter((u) => u.date >= TEACHER_TODAY)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start))
+  const completed = sessions
+    .filter((u) => u.date < TEACHER_TODAY)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.start.localeCompare(a.start))
 
-  const toGive = upcoming.filter((u) => u.kind === 'Observing')
-  const awaiting = upcoming.filter((u) => !u.confirmed).length
-  const reportsDue = upcoming.filter((u) => u.reportDue).sort((a, b) => a.reportDue!.localeCompare(b.reportDue!))
-  const pendingRequests = OBSERVER_REQUESTS.filter((r) => !answers[r.id]).length
-  const req = EVALUATION_REQUIREMENT
-
-  const tabs: { id: Tab; label: string; count?: number }[] = [
-    { id: 'upcoming', label: 'Upcoming', count: awaiting },
-    { id: 'history', label: 'History' },
-    { id: 'matching', label: 'Observer Matching' },
-    { id: 'requests', label: 'Observation Requests', count: pendingRequests },
-  ]
+  const confirm = (id: number) => setConfirmedIds((prev) => new Set(prev).add(id))
+  const openReport = (id: number) => navigate('Observation Report', String(id))
 
   return (
-    <main className="flex min-w-0 flex-1 flex-col">
-      <TabBar tabs={tabs} active={tab} onChange={setTab} />
-
-      <div className="px-6 py-7">
-        <header className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-semibold text-neutral-900">Evaluations</h1>
-            <p className="mt-1 text-xs text-neutral-500">
-              Your evaluation cycle, evaluations you receive, and evaluations you give · Fall 2026
-            </p>
-            <SignupStatus />
-          </div>
-          <div className="flex gap-2">
-            <SignupActions />
-          </div>
-        </header>
-
-        <div className="mt-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
-          <StatCard
-            label="Next formal evaluation"
-            value={TEACHER_PROFILE.nextEvaluation}
-            detail={`Due ${req.nextDue} · ${req.cycle}`}
-          />
-          <StatCard
-            label="Evaluations received"
-            value={`${req.received} of ${req.required}`}
-            detail={`${req.required - req.received} more required this cycle`}
-            warn={req.received < req.required}
-          />
-          <StatCard
-            label="Evaluations to give"
-            value={String(toGive.length)}
-            detail={awaiting > 0 ? `${awaiting} awaiting your confirmation` : 'All confirmed'}
-            warn={awaiting > 0}
-          />
-          <StatCard
-            label="Reports due"
-            value={String(reportsDue.length)}
-            detail={
-              reportsDue.length > 0
-                ? `${reportsDue[0].otherProfessor} · due ${format(reportsDue[0].reportDue!, { month: 'short', day: 'numeric' })}`
-                : 'Nothing due'
-            }
-            danger={reportsDue.length > 0}
-          />
+    <main className="min-w-0 flex-1 px-6 py-7">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold text-neutral-900">Evaluations</h1>
+          <p className="mt-1 text-xs text-neutral-500">
+            Your evaluation cycle, evaluations you receive, and evaluations you give · Fall 2026
+          </p>
+          <SignupStatus />
         </div>
-
-        <div role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`} className="mt-4">
-          {tab === 'upcoming' && (
-            <UpcomingCard
-              items={upcoming}
-              onConfirm={(id) => setConfirmedIds((prev) => new Set(prev).add(id))}
-              onOpenReport={(id) => navigate('Observation Report', String(id))}
-            />
-          )}
-          {tab === 'history' && <HistoryCard />}
-          {tab === 'matching' && (
-            <ObserverMatchingCard requested={requested} onRequest={(id) => setRequested((prev) => new Set(prev).add(id))} />
-          )}
-          {tab === 'requests' && (
-            <ObservationRequestsCard answers={answers} onAnswer={(id, a) => setAnswers((prev) => ({ ...prev, [id]: a }))} />
-          )}
+        <div className="flex gap-2">
+          <SignupActions />
         </div>
+      </header>
+
+      <div className="mt-5 space-y-4">
+        <AttentionCard sessions={sessions} onConfirm={confirm} onOpenReport={openReport} />
+        <StatsRow sessions={sessions} />
+        <OpenSignupsCard offered={offered} onOffer={(id) => setOffered((prev) => new Set(prev).add(id))} />
+        <UpcomingSessionsCard
+          items={upcoming}
+          onConfirm={confirm}
+          onOpenReport={openReport}
+          onOpenCalendar={() => navigate('Dashboard')}
+        />
+        <RecentlyCompletedCard
+          items={completed}
+          onOpenReport={openReport}
+          showHistory={showHistory}
+          onToggleHistory={() => setShowHistory((v) => !v)}
+        />
+        {showHistory && <HistoryCard />}
       </div>
     </main>
   )
 }
 
-/** Browser-style tab strip pinned to the top of the page. */
-function TabBar<T extends string>({
-  tabs,
-  active,
-  onChange,
-}: {
-  tabs: { id: T; label: string; count?: number }[]
-  active: T
-  onChange: (id: T) => void
-}) {
-  // Left/right arrows move between tabs, as in a native tab list.
-  const onKeyDown = (e: KeyboardEvent, index: number) => {
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
-    const next = tabs[(index + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]
-    onChange(next.id)
-    document.getElementById(`tab-${next.id}`)?.focus()
-  }
-
-  return (
-    <div
-      role="tablist"
-      aria-label="Evaluation sections"
-      className="sticky top-0 z-10 flex items-end gap-0.5 overflow-x-auto bg-neutral-300/70 px-3 pt-2"
-    >
-      {tabs.map((t, i) => {
-        const selected = t.id === active
-        return (
-          <button
-            key={t.id}
-            id={`tab-${t.id}`}
-            type="button"
-            role="tab"
-            aria-selected={selected}
-            aria-controls={`tabpanel-${t.id}`}
-            tabIndex={selected ? 0 : -1}
-            onClick={() => onChange(t.id)}
-            onKeyDown={(e) => onKeyDown(e, i)}
-            className={`relative flex min-w-36 shrink-0 items-center gap-2 rounded-t-lg px-4 py-2 text-xs whitespace-nowrap transition-colors ${
-              selected
-                ? 'bg-neutral-100 font-medium text-neutral-900'
-                : 'text-neutral-600 hover:bg-neutral-200/80 hover:text-neutral-900'
-            }`}
-          >
-            {selected && <span className="absolute inset-x-3 top-0 h-0.5 rounded-b bg-[#e0791a]" aria-hidden="true" />}
-            {t.label}
-            {!!t.count && (
-              <span
-                className={`rounded-full px-1.5 text-[10px] font-medium ${
-                  selected ? 'bg-[#e0791a] text-white' : 'bg-neutral-400/60 text-neutral-800'
-                }`}
-              >
-                {t.count}
-              </span>
-            )}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-function StatCard({
-  label,
-  value,
-  detail,
-  warn,
-  danger,
-}: {
-  label: string
-  value: string
-  detail: string
-  warn?: boolean
-  danger?: boolean
-}) {
-  const detailColor = danger ? 'text-[#b3261e]' : warn ? 'text-[#e0791a]' : 'text-neutral-500'
-  return (
-    <section className="rounded-lg border border-neutral-200 bg-white px-3.5 py-3.5">
-      <span className="block h-0.5 w-5 rounded bg-[#e0791a]" aria-hidden="true" />
-      <h2 className="mt-2.5 text-[11px] text-neutral-600">{label}</h2>
-      <p className="mt-1 text-2xl font-semibold text-[#1c4532]">{value}</p>
-      <p className={`mt-1 text-[10px] ${detailColor}`}>{detail}</p>
-    </section>
-  )
-}
-
-function UpcomingCard({
-  items,
+function AttentionCard({
+  sessions,
   onConfirm,
   onOpenReport,
 }: {
-  items: UpcomingEvaluation[]
+  sessions: UpcomingEvaluation[]
   onConfirm: (id: number) => void
   onOpenReport: (id: number) => void
 }) {
-  const [sort, setSort] = useState<'date' | 'type'>('date')
-  const sorted = useMemo(
-    () =>
-      items
-        .filter((u) => u.date >= TEACHER_TODAY)
-        .sort(
-          (a, b) =>
-            (sort === 'type' ? a.kind.localeCompare(b.kind) : 0) ||
-            a.date.localeCompare(b.date) ||
-            a.start.localeCompare(b.start),
-        ),
-    [items, sort],
-  )
+  const reports = sessions
+    .filter((u) => u.kind === 'Observing' && u.reportDue && u.reportDue >= TEACHER_TODAY)
+    .sort((a, b) => a.reportDue!.localeCompare(b.reportDue!))
+  const toSign = sessions.filter(awaitingMySignature).sort((a, b) => a.date.localeCompare(b.date))
+  const visits = sessions
+    .filter((u) => u.kind === 'Being observed' && !u.confirmed && u.date >= TEACHER_TODAY)
+    .sort((a, b) => a.date.localeCompare(b.date))
+  const count = reports.length + toSign.length + visits.length
 
   return (
-    <section className="min-w-0 rounded-lg border border-neutral-200 bg-white p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-neutral-900">Upcoming</h2>
-          <p className="mt-0.5 text-[10px] text-neutral-500">Confirm, reschedule, or prepare for each session</p>
-        </div>
-        <div className="flex shrink-0 items-center gap-3 text-[11px]">
-          <label className="flex items-center gap-1 text-neutral-500">
-            Sort:
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as 'date' | 'type')}
-              className="bg-transparent text-neutral-900 focus:outline-none"
-            >
-              <option value="date">Date</option>
-              <option value="type">Type</option>
-            </select>
-          </label>
-          <a href="#" onClick={(e) => e.preventDefault()} className="text-[#e0791a] hover:underline">
-            Open calendar →
-          </a>
-        </div>
+    <section className={card}>
+      <div className="flex items-center gap-2">
+        <span
+          className="flex h-4 w-4 items-center justify-center rounded-full border-[1.5px] border-[#b3261e] text-[9px] leading-none font-bold text-[#b3261e]"
+          aria-hidden="true"
+        >
+          !
+        </span>
+        <h2 className="text-sm font-semibold text-neutral-900">Needs your attention</h2>
+        <span className="text-[11px] text-neutral-500">
+          {count} item{count === 1 ? '' : 's'}
+        </span>
       </div>
 
       <ul className="mt-3 space-y-2">
-        {sorted.map((item) => (
-          <UpcomingRow
-            key={item.id}
-            item={item}
-            onConfirm={() => onConfirm(item.id)}
-            onOpenReport={() => onOpenReport(item.id)}
-          />
+        {reports.map((u) => (
+          <AttentionItem
+            key={`report-${u.id}`}
+            tone="red"
+            title={`Submit your report for ${u.otherProfessor}`}
+            detail={`Due ${dueLabel(u.reportDue!)} · observed ${courseNumber(u.course)} Sec ${u.section} on ${format(u.date, { month: 'short', day: 'numeric' })}`}
+          >
+            <button type="button" onClick={() => onOpenReport(u.id)} className={primary}>
+              Submit report
+            </button>
+          </AttentionItem>
         ))}
-        {sorted.length === 0 && <li className="py-6 text-center text-[11px] text-neutral-500">Nothing scheduled.</li>}
+        {toSign.map((u) => (
+          <AttentionItem
+            key={`sign-${u.id}`}
+            tone="orange"
+            title={`Review and sign ${u.otherProfessor}’s report`}
+            detail={`Observed your ${courseNumber(u.course)} Sec ${u.section} on ${format(u.date, { month: 'short', day: 'numeric' })}`}
+          >
+            <button type="button" onClick={() => onOpenReport(u.id)} className={primary}>
+              Review and sign
+            </button>
+          </AttentionItem>
+        ))}
+        {visits.map((u) => (
+          <AttentionItem
+            key={`visit-${u.id}`}
+            tone="orange"
+            title={`Confirm ${u.otherProfessor}’s visit to your class`}
+            detail={[
+              `${courseNumber(u.course)} Sec ${u.section}`,
+              `${format(u.date, { weekday: 'short', month: 'short', day: 'numeric' }).replace(',', '')}, ${timeRange(u.start, u.end, true)}`,
+              u.room,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          >
+            <button type="button" className={secondary}>
+              Propose new time
+            </button>
+            <button type="button" onClick={() => onConfirm(u.id)} className={primary}>
+              Confirm
+            </button>
+          </AttentionItem>
+        ))}
+        {count === 0 && <li className="py-3 text-center text-[11px] text-neutral-500">You’re all caught up.</li>}
       </ul>
     </section>
   )
 }
 
-function UpcomingRow({
-  item,
-  onConfirm,
-  onOpenReport,
+function AttentionItem({
+  tone,
+  title,
+  detail,
+  children,
 }: {
-  item: UpcomingEvaluation
-  onConfirm: () => void
-  onOpenReport: () => void
+  tone: 'red' | 'orange'
+  title: string
+  detail: string
+  children: ReactNode
 }) {
-  const observed = item.kind === 'Being observed'
-  const title = observed ? `Observed by ${item.otherProfessor}` : `Observing ${item.otherProfessor}`
-  const courseNumber = item.course.split(' ').slice(0, 2).join(' ')
-  const details = [
-    `${courseNumber} Sec ${item.section}`,
-    `${format(item.date, { weekday: 'short' })} ${item.start}–${item.end}`,
-    item.room,
-  ]
-    .filter(Boolean)
-    .join(' · ')
+  const styles = tone === 'red' ? 'border-[#f3c9c4] bg-[#fdeeec]' : 'border-[#f5d3b3] bg-[#fdf1e6]'
+  return (
+    <li className={`flex flex-wrap items-center gap-3 rounded-md border px-3.5 py-2.5 ${styles}`}>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-semibold text-neutral-900">{title}</p>
+        <p className={`mt-0.5 text-[10px] ${tone === 'red' ? 'text-[#b3261e]' : 'text-neutral-600'}`}>{detail}</p>
+      </div>
+      <div className="flex shrink-0 gap-2">{children}</div>
+    </li>
+  )
+}
 
-  const status = item.reportDue
-    ? { text: `Report due ${format(item.reportDue, { month: 'short', day: 'numeric' })}`, color: 'text-[#b3261e]', dot: 'bg-[#b3261e]' }
-    : item.confirmed
-      ? { text: 'Confirmed', color: 'text-[#3f8a55]', dot: 'bg-[#3f8a55]' }
-      : { text: 'Awaiting your confirmation', color: 'text-[#e0791a]', dot: 'bg-[#e0791a]' }
+function StatsRow({ sessions }: { sessions: UpcomingEvaluation[] }) {
+  const req = EVALUATION_REQUIREMENT
+  const months = monthsUntil(req.nextDueMonth)
+  const given = sessions.filter((u) => u.kind === 'Observing')
+  const done = given.filter((u) => u.date < TEACHER_TODAY)
+  const due = done.filter((u) => u.reportDue).length
+  const submitted = done.length - due
 
   return (
-    <li className="flex flex-wrap items-center gap-3 rounded-md bg-neutral-50 px-3 py-2.5">
-      <div className="flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-md border border-neutral-200 bg-white">
-        <span className="text-[8px] font-semibold text-[#e0791a] uppercase">{format(item.date, { month: 'short' })}</span>
-        <span className="text-sm leading-none font-semibold text-neutral-900">{format(item.date, { day: 'numeric' })}</span>
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="flex flex-wrap items-center gap-2 text-xs font-semibold text-neutral-900">
-          {title}
-          <span className={`rounded-full px-2 py-px text-[9px] font-medium ${KIND_BADGES[item.kind]}`}>{item.kind}</span>
-        </p>
-        <p className="mt-0.5 truncate text-[10px] text-neutral-500">{details}</p>
-        <p className={`mt-0.5 flex items-center gap-1 text-[9px] ${status.color}`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} aria-hidden="true" />
-          {status.text}
-        </p>
-      </div>
-      <div className="flex shrink-0 gap-1.5">
-        {!item.confirmed ? (
+    <div className="grid gap-3 md:grid-cols-3">
+      <StatCard label="Next formal evaluation" value={<span className="text-2xl">{req.nextDue}</span>}>
+        {req.cycle} · about {months} month{months === 1 ? '' : 's'} away
+      </StatCard>
+      <StatCard
+        label="Observations received"
+        value={
           <>
-            <button type="button" onClick={onConfirm} className={primary}>
-              Confirm
-            </button>
-            <button type="button" className={secondary}>
-              Propose new time
-            </button>
+            <span className="text-2xl">{req.observationsReceived}</span>
+            <span className="ml-1 text-xs font-normal text-neutral-600">this cycle</span>
           </>
-        ) : (
+        }
+      >
+        Evaluation required {req.frequency.toLowerCase()}
+      </StatCard>
+      <StatCard
+        label="Evaluations you give"
+        value={
           <>
-            {observed ? (
-              <button type="button" className={secondary}>
-                View rubric
-              </button>
-            ) : (
-              <button type="button" onClick={onOpenReport} className={secondary}>
-                Evaluation form
-              </button>
-            )}
-            {!item.reportDue && (
-              <button type="button" className={secondary}>
-                Reschedule
-              </button>
-            )}
+            <span className="text-2xl">{given.length}</span>
+            <span className="ml-1 text-xs font-normal text-neutral-600">this term</span>
           </>
-        )}
+        }
+      >
+        {submitted} report{submitted === 1 ? '' : 's'} submitted · {due} due
+      </StatCard>
+    </div>
+  )
+}
+
+function StatCard({ label, value, children }: { label: string; value: ReactNode; children: ReactNode }) {
+  return (
+    <section className="rounded-lg border border-neutral-200 bg-white px-4 py-3.5">
+      <h2 className="text-[11px] text-neutral-600">{label}</h2>
+      <p className="mt-1 font-semibold text-neutral-900">{value}</p>
+      <div className="mt-1 text-[10px] text-neutral-500">{children}</div>
+    </section>
+  )
+}
+
+function OpenSignupsCard({ offered, onOffer }: { offered: Set<number>; onOffer: (id: number) => void }) {
+  const open = OPEN_SIGNUPS.filter((s) => !offered.has(s.id)).length
+
+  return (
+    <section className={card}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-neutral-900">Faculty signed up to be observed</h2>
+          <p className="mt-0.5 text-[10px] text-neutral-500">Pick a class that fits your schedule and offer to observe it.</p>
+        </div>
+        <span className="shrink-0 rounded-full bg-neutral-100 px-2.5 py-0.5 text-[10px] font-medium text-neutral-700">
+          {open} open
+        </span>
       </div>
-    </li>
+
+      <div className="mt-3 overflow-x-auto rounded-md border border-neutral-200">
+        <table className="w-full min-w-140 text-[11px]">
+          <thead>
+            <tr className="bg-neutral-50 text-[10px] tracking-wide text-neutral-500 uppercase">
+              <th className="px-3 py-2 text-left font-medium">Observee</th>
+              <th className="px-3 py-2 text-left font-medium">Course</th>
+              <th className="px-3 py-2 text-left font-medium">Section</th>
+              <th className="px-3 py-2 text-left font-medium">Days</th>
+              <th className="px-3 py-2 text-left font-medium">Time</th>
+              <th className="px-3 py-2">
+                <span className="sr-only">Action</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {OPEN_SIGNUPS.map((s) => {
+              const sent = offered.has(s.id)
+              return (
+                <tr key={s.id} className="border-t border-neutral-100">
+                  <td className="px-3 py-2.5">
+                    <p className="font-semibold text-neutral-900">{s.name}</p>
+                    <a href={`mailto:${s.email}`} className="text-[10px] text-neutral-500 underline hover:text-neutral-700">
+                      {s.email}
+                    </a>
+                  </td>
+                  <td className="px-3 py-2.5 font-semibold whitespace-nowrap text-neutral-900">{s.course}</td>
+                  <td className="px-3 py-2.5 text-neutral-700">{s.section}</td>
+                  <td className="px-3 py-2.5 whitespace-nowrap text-neutral-700">{s.days}</td>
+                  <td className="px-3 py-2.5 whitespace-nowrap text-neutral-700">{timeRange(s.start, s.end)}</td>
+                  <td className="px-3 py-2.5 text-right">
+                    <button type="button" disabled={sent} onClick={() => onOffer(s.id)} className={secondary}>
+                      {sent ? 'Offer sent' : 'Offer to observe'}
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+function DateBlock({ iso, boxed }: { iso: string; boxed?: boolean }) {
+  return (
+    <div
+      className={`flex w-10 shrink-0 flex-col items-center justify-center ${boxed ? 'h-11 rounded-md border border-neutral-200 bg-white' : ''}`}
+    >
+      <span className={`text-[8px] font-semibold uppercase ${boxed ? 'text-[#c4561a]' : 'text-neutral-500'}`}>
+        {format(iso, { month: 'short' })}
+      </span>
+      <span className="text-sm leading-tight font-semibold text-neutral-900">{format(iso, { day: 'numeric' })}</span>
+    </div>
+  )
+}
+
+/** "Observing you" / "You observe(d)" chip with a small person or eye glyph. */
+function RoleChip({ observedYou, past }: { observedYou: boolean; past: boolean }) {
+  const label = observedYou ? (past ? 'Observed you' : 'Observing you') : past ? 'You observed' : 'You observe'
+  const styles = observedYou ? 'bg-[#e8eefb] text-[#2f4f8f]' : 'bg-[#e6f1ea] text-[#1c4532]'
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-px text-[9px] font-medium ${styles}`}>
+      {observedYou ? (
+        <svg viewBox="0 0 16 16" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+          <circle cx="8" cy="5.5" r="2.5" />
+          <path d="M3 14c.6-2.6 2.6-4 5-4s4.4 1.4 5 4" strokeLinecap="round" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 16 16" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+          <path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z" />
+          <circle cx="8" cy="8" r="2" />
+        </svg>
+      )}
+      {label}
+    </span>
+  )
+}
+
+function sessionTitle(u: UpcomingEvaluation) {
+  return u.kind === 'Being observed'
+    ? `${u.otherProfessor} → your ${courseNumber(u.course)}`
+    : `${u.otherProfessor} · ${courseNumber(u.course)}`
+}
+
+function UpcomingSessionsCard({
+  items,
+  onConfirm,
+  onOpenReport,
+  onOpenCalendar,
+}: {
+  today: string
+  items: UpcomingEvaluation[]
+  onConfirm: (id: number) => void
+  onOpenReport: (id: number) => void
+  onOpenCalendar: () => void
+}) {
+  return (
+    <section className={card}>
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="text-sm font-semibold text-neutral-900">Upcoming sessions</h2>
+        <button type="button" onClick={onOpenCalendar} className="shrink-0 text-[11px] font-medium text-[#c4561a] hover:underline">
+          Open calendar →
+        </button>
+      </div>
+
+      <ul className="mt-3 space-y-2">
+        {items.map((u) => {
+          const observedYou = u.kind === 'Being observed'
+          const details = [
+            `Sec ${u.section}`,
+            `${format(u.date, { weekday: 'short' })} ${timeRange(u.start, u.end, true)}`,
+            u.room,
+          ]
+            .filter(Boolean)
+            .join(' · ')
+          return (
+            <li key={u.id} className="flex flex-wrap items-center gap-3 rounded-md border border-neutral-200 px-3 py-2.5">
+              <DateBlock iso={u.date} boxed />
+              <div className="min-w-0 flex-1">
+                <p className="flex flex-wrap items-center gap-2 text-xs font-semibold text-neutral-900">
+                  <RoleChip observedYou={observedYou} past={false} />
+                  {sessionTitle(u)}
+                </p>
+                <p className="mt-0.5 truncate text-[10px] text-neutral-500">{details}</p>
+                <p className={`mt-0.5 flex items-center gap-1 text-[10px] ${u.confirmed ? 'text-[#3f8a55]' : 'text-[#c4561a]'}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${u.confirmed ? 'bg-[#3f8a55]' : 'bg-[#c4561a]'}`} aria-hidden="true" />
+                  {u.confirmed ? 'Confirmed' : 'Waiting for your confirmation'}
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                {observedYou ? (
+                  <button type="button" className={secondary}>
+                    View rubric
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => onOpenReport(u.id)} className={secondary}>
+                    Evaluation form
+                  </button>
+                )}
+                {!u.confirmed && (
+                  <button type="button" onClick={() => onConfirm(u.id)} className={primary}>
+                    Confirm
+                  </button>
+                )}
+              </div>
+            </li>
+          )
+        })}
+        {items.length === 0 && <li className="py-6 text-center text-[11px] text-neutral-500">Nothing scheduled.</li>}
+      </ul>
+    </section>
+  )
+}
+
+function RecentlyCompletedCard({
+  items,
+  onOpenReport,
+  showHistory,
+  onToggleHistory,
+}: {
+  items: UpcomingEvaluation[]
+  onOpenReport: (id: number) => void
+  showHistory: boolean
+  onToggleHistory: () => void
+}) {
+  return (
+    <section className={card}>
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="text-sm font-semibold text-neutral-900">Recently completed</h2>
+        <button
+          type="button"
+          onClick={onToggleHistory}
+          aria-expanded={showHistory}
+          className="shrink-0 text-[11px] font-medium text-[#c4561a] hover:underline"
+        >
+          {showHistory ? 'Hide history ↑' : 'See all history →'}
+        </button>
+      </div>
+
+      <ul className="mt-2 divide-y divide-neutral-100">
+        {items.map((u) => {
+          const observedYou = u.kind === 'Being observed'
+          const reportDue = !observedYou && u.reportDue
+          const received = observedYou && Boolean(RECEIVED_REPORTS[u.id])
+          const toSign = awaitingMySignature(u)
+          const title = observedYou
+            ? `${u.otherProfessor} → your ${courseNumber(u.course)} Sec ${u.section}`
+            : `${u.otherProfessor} · ${courseNumber(u.course)} Sec ${u.section}`
+          return (
+            <li key={u.id} className="flex flex-wrap items-center gap-3 py-2.5">
+              <DateBlock iso={u.date} />
+              <div className="min-w-0 flex-1">
+                <p className="flex flex-wrap items-center gap-2 text-xs font-semibold text-neutral-900">
+                  <RoleChip observedYou={observedYou} past />
+                  {title}
+                </p>
+                {reportDue ? (
+                  <p className="mt-0.5 flex items-center gap-1 text-[10px] text-[#b3261e]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#b3261e]" aria-hidden="true" />
+                    Report due {dueLabel(u.reportDue!).split(',')[0]}
+                  </p>
+                ) : toSign ? (
+                  <p className="mt-0.5 flex items-center gap-1 text-[10px] text-[#c4561a]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#c4561a]" aria-hidden="true" />
+                    Waiting for your signature
+                  </p>
+                ) : (
+                  <p className="mt-0.5 text-[10px] text-[#3f8a55]">
+                    ✓ {received ? 'Signed' : observedYou ? 'Feedback ready' : 'Report submitted'}
+                  </p>
+                )}
+              </div>
+              <div className="shrink-0">
+                {reportDue ? (
+                  <button type="button" onClick={() => onOpenReport(u.id)} className={primary}>
+                    Submit report
+                  </button>
+                ) : toSign ? (
+                  <button type="button" onClick={() => onOpenReport(u.id)} className={primary}>
+                    Review and sign
+                  </button>
+                ) : received ? (
+                  <button type="button" onClick={() => onOpenReport(u.id)} className={secondary}>
+                    View report
+                  </button>
+                ) : observedYou ? (
+                  <button type="button" className={secondary}>
+                    View feedback
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => onOpenReport(u.id)} className={secondary}>
+                    View report
+                  </button>
+                )}
+              </div>
+            </li>
+          )
+        })}
+        {items.length === 0 && <li className="py-6 text-center text-[11px] text-neutral-500">Nothing completed yet.</li>}
+      </ul>
+    </section>
   )
 }
 
@@ -382,13 +571,16 @@ function HistoryCard() {
     )
 
   return (
-    <section className="min-w-0 rounded-lg border border-neutral-200 bg-white p-4">
+    <section className={card}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-neutral-900">History</h2>
-          <p className="mt-0.5 text-[10px] text-neutral-500">Completed peer and formal evaluations</p>
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
+            History
+            <MockDataBadge />
+          </h2>
+          <MockDataNote>Past observations have no API yet.</MockDataNote>
         </div>
-        <button type="button" onClick={exportHistory} className="shrink-0 text-[11px] text-[#e0791a] hover:underline">
+        <button type="button" onClick={exportHistory} className="shrink-0 text-[11px] font-medium text-[#c4561a] hover:underline">
           Export →
         </button>
       </div>
@@ -418,7 +610,7 @@ function HistoryCard() {
                 <td className="px-2 py-2 text-neutral-700">{h.outcome ?? '—'}</td>
                 <td className="px-2 py-2 whitespace-nowrap text-neutral-700">{h.status}</td>
                 <td className="px-2 py-2">
-                  <a href="#" onClick={(e) => e.preventDefault()} className="text-[#e0791a] hover:underline">
+                  <a href="#" onClick={(e) => e.preventDefault()} className="text-[#c4561a] hover:underline">
                     View
                   </a>
                 </td>
@@ -428,142 +620,6 @@ function HistoryCard() {
         </table>
       </div>
     </section>
-  )
-}
-
-type AvailableSort = 'level' | 'available'
-
-function ObserverMatchingCard({ requested, onRequest }: { requested: Set<number>; onRequest: (id: number) => void }) {
-  const [availableSort, setAvailableSort] = useState<AvailableSort>('available')
-
-  const available = useMemo(
-    () =>
-      [...AVAILABLE_OBSERVERS].sort(
-        (a, b) =>
-          (availableSort === 'level' ? a.level - MY_LEVEL - (b.level - MY_LEVEL) : 0) ||
-          a.availableFrom.localeCompare(b.availableFrom),
-      ),
-    [availableSort],
-  )
-
-  return (
-    <section className="min-w-0 rounded-lg border border-neutral-200 bg-white p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-neutral-900">Observer Matching</h2>
-          <p className="mt-0.5 text-[10px] text-neutral-500">
-            Observers above your level ({MY_LEVEL}s) who can observe you · request one as your observer
-          </p>
-        </div>
-        <label className="flex shrink-0 items-center gap-1 text-[11px] text-neutral-500">
-          Sort:
-          <select
-            value={availableSort}
-            onChange={(e) => setAvailableSort(e.target.value as AvailableSort)}
-            className="bg-transparent text-neutral-900 focus:outline-none"
-          >
-            <option value="available">Soonest available</option>
-            <option value="level">Nearest level</option>
-          </select>
-        </label>
-      </div>
-
-      <ul className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-        {available.map((o) => {
-          const sent = requested.has(o.id)
-          return (
-            <li key={o.id} className="rounded-md bg-neutral-50 p-2.5">
-              <MatchHeader match={o} />
-              <div className="mt-2 flex items-center justify-between">
-                <span className="text-[9px] text-neutral-500">Available · {o.available}</span>
-                <button
-                  type="button"
-                  disabled={sent}
-                  onClick={() => onRequest(o.id)}
-                  className={`${secondary} disabled:text-neutral-400 disabled:hover:bg-white`}
-                >
-                  {sent ? 'Requested' : 'Request'}
-                </button>
-              </div>
-            </li>
-          )
-        })}
-      </ul>
-    </section>
-  )
-}
-
-function ObservationRequestsCard({
-  answers,
-  onAnswer,
-}: {
-  answers: Record<number, RequestAnswer>
-  onAnswer: (id: number, answer: RequestAnswer) => void
-}) {
-  const requests = [...OBSERVER_REQUESTS].sort((a, b) => a.due.localeCompare(b.due))
-
-  return (
-    <section className="min-w-0 rounded-lg border border-neutral-200 bg-white p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-neutral-900">Observation Requests</h2>
-          <p className="mt-0.5 text-[10px] text-neutral-500">Colleagues below your level who asked you to observe them</p>
-        </div>
-        <span className="shrink-0 text-[11px] text-neutral-500">
-          Sort: <span className="text-neutral-900">Due date</span>
-        </span>
-      </div>
-
-      <ul className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-        {requests.map((r) => {
-          const answer = answers[r.id]
-          const overdue = r.due < TEACHER_TODAY
-          return (
-            <li
-              key={r.id}
-              className={`rounded-md border p-2.5 ${answer ? 'border-neutral-200 bg-neutral-50' : 'border-[#e0791a] bg-[#fdf1e6]'}`}
-            >
-              <MatchHeader match={r} />
-              <div className="mt-2 flex items-center justify-between gap-2">
-                <span className={`text-[9px] ${overdue && !answer ? 'text-[#b3261e]' : 'text-neutral-500'}`}>
-                  Requested you · {overdue ? 'overdue' : `due ${format(r.due, { month: 'short', day: 'numeric' })}`}
-                </span>
-                {answer ? (
-                  <span className={`text-[10px] font-medium ${answer === 'accepted' ? 'text-[#3f8a55]' : 'text-neutral-500'}`}>
-                    {answer === 'accepted' ? 'Accepted' : 'Declined'}
-                  </span>
-                ) : (
-                  <div className="flex gap-1.5">
-                    <button type="button" onClick={() => onAnswer(r.id, 'declined')} className={secondary}>
-                      Decline
-                    </button>
-                    <button type="button" onClick={() => onAnswer(r.id, 'accepted')} className={primary}>
-                      Accept
-                    </button>
-                  </div>
-                )}
-              </div>
-            </li>
-          )
-        })}
-        {requests.length === 0 && <li className="py-6 text-center text-[11px] text-neutral-500">No requests right now.</li>}
-      </ul>
-    </section>
-  )
-}
-
-function MatchHeader({ match }: { match: ObserverMatch }) {
-  return (
-    <div className="flex items-start gap-2">
-      <span className={`h-6 w-6 shrink-0 rounded-full ${AVATARS[match.avatar]}`} aria-hidden="true" />
-      <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-semibold text-neutral-900">
-          {match.name} · {match.rank}
-        </p>
-        <p className="truncate text-[9px] text-neutral-500">{match.teaching}</p>
-      </div>
-      <span className="shrink-0 rounded-full bg-[#3f8a55] px-2 py-0.5 text-[9px] font-medium text-white">{match.level}s</span>
-    </div>
   )
 }
 

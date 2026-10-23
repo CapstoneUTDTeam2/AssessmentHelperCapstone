@@ -39,8 +39,11 @@ export interface FacultyMember {
   email: string
   level: FacultyLevel
   courses: string[]
-  completed: number
-  required: number
+  /**
+   * Peer observations received this cycle; null when not known yet. There is no
+   * required count: the client has only set how often an evaluation is due.
+   */
+  observationsReceived: number | null
   status: string
   statusTone: StatusTone
   /** ISO date of the next evaluation, used for sorting. */
@@ -60,8 +63,7 @@ export const FACULTY: FacultyMember[] = [
     email: 'professor.a@utdallas.edu',
     level: 'Associate Prof.',
     courses: ['CS 3345', 'CS 2336', 'CS 4348'],
-    completed: 2,
-    required: 3,
+    observationsReceived: 2,
     status: 'Due Spring 2027',
     statusTone: 'due',
     nextEvaluationDate: '2027-03-01',
@@ -82,11 +84,11 @@ export const FACULTY: FacultyMember[] = [
         { date: 'Oct 14, 2026', title: 'Observed by Professor F · CS 4348', subtitle: 'Awaiting confirmation', kind: 'Observed' },
         { date: 'Spring 2027', title: 'Formal evaluation', subtitle: 'Scheduled', kind: 'Evaluation' },
       ],
-      hireLevel: 'Associate Professor · Tenure-track',
+      hireLevel: 'Associate Professor',
       cycle: 'Every 2 years (associate rule)',
       lastEvaluation: 'Mar 12, 2025',
       nextEvaluation: 'Spring 2027 · due Mar 2027',
-      instructorLevels: ['4000s', 'Observed by 5000s–6000s', 'Observes 1000s–3000s'],
+      instructorLevels: ['4000s', 'Observed by same-level colleagues in the same department'],
       canObserveThem: [
         { name: 'Professor I', rank: 'Full', detail: '6000s · CS 4348, CS 4375', courseLevel: '6000s' },
         { name: 'Professor F', rank: 'Associate', detail: '5000s · CS 3345, CS 5343', courseLevel: '5000s' },
@@ -104,8 +106,7 @@ export const FACULTY: FacultyMember[] = [
     email: 'professor.g@utdallas.edu',
     level: 'Assistant Prof.',
     courses: ['CS 1336', 'CS 1337'],
-    completed: 0,
-    required: 2,
+    observationsReceived: 0,
     status: 'Overdue',
     statusTone: 'overdue',
     nextEvaluationDate: '2026-09-14',
@@ -120,11 +121,11 @@ export const FACULTY: FacultyMember[] = [
         { date: 'Sep 14, 2026', title: 'Observed by Professor I · CS 1337', subtitle: 'Report overdue', kind: 'Observed' },
         { date: 'Fall 2026', title: 'Formal evaluation', subtitle: 'Overdue', kind: 'Evaluation' },
       ],
-      hireLevel: 'Assistant Professor · Tenure-track',
+      hireLevel: 'Assistant Professor',
       cycle: 'Every year (assistant rule)',
       lastEvaluation: 'Sep 10, 2025',
       nextEvaluation: 'Fall 2026 · overdue',
-      instructorLevels: ['1000s', 'Observed by 3000s–6000s'],
+      instructorLevels: ['1000s', 'Observed by same-level colleagues in the same department'],
       canObserveThem: [
         { name: 'Professor A', rank: 'Associate', detail: '4000s · CS 3345, CS 4348', courseLevel: '4000s' },
         { name: 'Professor I', rank: 'Full', detail: '6000s · CS 4348, CS 4375', courseLevel: '6000s' },
@@ -138,8 +139,7 @@ export const FACULTY: FacultyMember[] = [
     email: 'professor.d@utdallas.edu',
     level: 'Full Prof.',
     courses: ['CS 6375', 'CS 4375'],
-    completed: 3,
-    required: 3,
+    observationsReceived: 3,
     status: 'Up to date',
     statusTone: 'ok',
     nextEvaluationDate: '2029-03-01',
@@ -153,11 +153,11 @@ export const FACULTY: FacultyMember[] = [
         { date: 'Apr 15, 2026', title: 'Formal evaluation', subtitle: 'Completed · Exceeds expectations', kind: 'Evaluation' },
       ],
       upcoming: [],
-      hireLevel: 'Full Professor · Tenured',
-      cycle: 'Every 3 years (full rule)',
+      hireLevel: 'Full Professor',
+      cycle: 'Every 2 years (full rule)',
       lastEvaluation: 'Apr 15, 2026',
-      nextEvaluation: 'Spring 2029',
-      instructorLevels: ['6000s', 'Observes 1000s–5000s'],
+      nextEvaluation: 'Spring 2028',
+      instructorLevels: ['6000s', 'Observed by same-level colleagues in the same department'],
       canObserveThem: [
         { name: 'Professor I', rank: 'Full', detail: '6000s · CS 4348, CS 4375', courseLevel: '6000s' },
       ],
@@ -173,8 +173,7 @@ export const FACULTY: FacultyMember[] = [
     email: 'professor.h@utdallas.edu',
     level: 'Assistant Prof.',
     courses: ['CS 1336', 'CS 3305'],
-    completed: 1,
-    required: 2,
+    observationsReceived: 1,
     status: 'Due this semester',
     statusTone: 'due',
     nextEvaluationDate: '2026-10-21',
@@ -189,11 +188,11 @@ export const FACULTY: FacultyMember[] = [
         { date: 'Oct 14, 2026', title: 'Observed by Professor A · CS 1336', subtitle: 'Awaiting confirmation', kind: 'Observed' },
         { date: 'Dec 2026', title: 'Formal evaluation', subtitle: 'Scheduled', kind: 'Evaluation' },
       ],
-      hireLevel: 'Assistant Professor · Tenure-track',
+      hireLevel: 'Assistant Professor',
       cycle: 'Every year (assistant rule)',
       lastEvaluation: 'Dec 04, 2025',
       nextEvaluation: 'Fall 2026 · due Dec 2026',
-      instructorLevels: ['3000s', 'Observed by 4000s–6000s'],
+      instructorLevels: ['3000s', 'Observed by same-level colleagues in the same department'],
       canObserveThem: [
         { name: 'Professor A', rank: 'Associate', detail: '4000s · CS 3345, CS 4348', courseLevel: '4000s' },
         { name: 'Professor D', rank: 'Full', detail: '6000s · CS 6375, CS 4375', courseLevel: '6000s' },
@@ -207,8 +206,7 @@ export const FACULTY: FacultyMember[] = [
     email: 'professor.l@utdallas.edu',
     level: 'Lecturer',
     courses: ['CS 2305'],
-    completed: 0,
-    required: 1,
+    observationsReceived: 0,
     status: 'Due this semester',
     statusTone: 'due',
     nextEvaluationDate: '2026-09-28',
@@ -222,11 +220,11 @@ export const FACULTY: FacultyMember[] = [
       upcoming: [
         { date: 'Sep 28, 2026', title: 'Observation · CS 2305', subtitle: 'No observer assigned', kind: 'Observed' },
       ],
-      hireLevel: 'Lecturer · Non-tenure-track',
+      hireLevel: 'Lecturer',
       cycle: 'Every year (lecturer rule)',
       lastEvaluation: 'Apr 22, 2025',
       nextEvaluation: 'Fall 2026 · due Sep 2026',
-      instructorLevels: ['2000s', 'Observed by 3000s–6000s'],
+      instructorLevels: ['2000s', 'Observed by same-level colleagues in the same department'],
       canObserveThem: [
         { name: 'Professor A', rank: 'Associate', detail: '4000s · CS 3345, CS 4348', courseLevel: '4000s' },
         { name: 'Professor F', rank: 'Associate', detail: '5000s · CS 3345, CS 5343', courseLevel: '5000s' },
@@ -240,8 +238,7 @@ export const FACULTY: FacultyMember[] = [
     email: 'professor.c@utdallas.edu',
     level: 'Assistant Prof.',
     courses: ['CS 2305', 'CS 2340'],
-    completed: 1,
-    required: 2,
+    observationsReceived: 1,
     status: 'Due this semester',
     statusTone: 'due',
     nextEvaluationDate: '2026-10-01',
@@ -255,11 +252,11 @@ export const FACULTY: FacultyMember[] = [
       upcoming: [
         { date: 'Sep 24, 2026', title: 'Observed by Professor A · CS 2305', subtitle: 'Confirmed', kind: 'Observed' },
       ],
-      hireLevel: 'Assistant Professor · Tenure-track',
+      hireLevel: 'Assistant Professor',
       cycle: 'Every year (assistant rule)',
       lastEvaluation: 'Dec 01, 2025',
       nextEvaluation: 'Fall 2026 · due Oct 2026',
-      instructorLevels: ['2000s', 'Observed by 3000s–6000s'],
+      instructorLevels: ['2000s', 'Observed by same-level colleagues in the same department'],
       canObserveThem: [
         { name: 'Professor A', rank: 'Associate', detail: '4000s · CS 3345, CS 4348', courseLevel: '4000s' },
       ],
@@ -272,8 +269,7 @@ export const FACULTY: FacultyMember[] = [
     email: 'professor.f@utdallas.edu',
     level: 'Associate Prof.',
     courses: ['CS 3345', 'CS 5343'],
-    completed: 3,
-    required: 3,
+    observationsReceived: 3,
     status: 'Up to date',
     statusTone: 'ok',
     nextEvaluationDate: '2027-11-01',
@@ -289,7 +285,7 @@ export const FACULTY: FacultyMember[] = [
       upcoming: [
         { date: 'Oct 14, 2026', title: 'Observing Professor A · CS 4348', subtitle: 'Awaiting confirmation', kind: 'Observing' },
       ],
-      hireLevel: 'Associate Professor · Tenured',
+      hireLevel: 'Associate Professor',
       cycle: 'Every 2 years (associate rule)',
       lastEvaluation: 'Nov 20, 2025',
       nextEvaluation: 'Fall 2027',
@@ -308,8 +304,7 @@ export const FACULTY: FacultyMember[] = [
     email: 'professor.b@utdallas.edu',
     level: 'Lecturer',
     courses: ['CS 3341'],
-    completed: 1,
-    required: 1,
+    observationsReceived: 1,
     status: 'Up to date',
     statusTone: 'ok',
     nextEvaluationDate: '2027-09-01',
@@ -323,11 +318,11 @@ export const FACULTY: FacultyMember[] = [
       upcoming: [
         { date: 'Sep 29, 2026', title: 'Observed by Professor H · CS 3341', subtitle: 'Confirmed', kind: 'Observed' },
       ],
-      hireLevel: 'Lecturer · Non-tenure-track',
+      hireLevel: 'Lecturer',
       cycle: 'Every year (lecturer rule)',
       lastEvaluation: 'Sep 30, 2025',
       nextEvaluation: 'Fall 2027',
-      instructorLevels: ['3000s', 'Observed by 4000s–6000s'],
+      instructorLevels: ['3000s', 'Observed by same-level colleagues in the same department'],
       canObserveThem: [
         { name: 'Professor H', rank: 'Assistant', detail: '3000s · CS 3305', courseLevel: '3000s' },
       ],

@@ -9,6 +9,8 @@ export interface User {
   name: string
   title: string
   role: Role
+  /** Professors.ProfessorID the faculty session loads. Coordinator sessions omit this. */
+  professorId?: number
 }
 
 interface DemoAccount extends User {
@@ -17,18 +19,19 @@ interface DemoAccount extends User {
 
 export const DEMO_ACCOUNTS: DemoAccount[] = [
   {
-    email: 'coordinator@utdallas.edu',
+    email: 'coordinator@example.com',
     password: 'demo1234',
     name: 'AC Member',
     title: 'Committee Chair',
     role: 'coordinator',
   },
   {
-    email: 'professor.a@utdallas.edu',
+    email: 'professor.a@example.com',
     password: 'faculty1234',
-    name: 'Professor A',
+    name: 'Alice Johnson',
     title: 'Faculty',
     role: 'faculty',
+    professorId: 1,
   },
 ]
 
@@ -55,6 +58,6 @@ export function authenticate(email: string, password: string, role: Role): AuthR
           : 'This account does not have Assessment Coordinator access.',
     }
   }
-  const { email: userEmail, name, title, role: userRole } = account
-  return { ok: true, user: { email: userEmail, name, title, role: userRole } }
+  const { email: userEmail, name, title, role: userRole, professorId } = account
+  return { ok: true, user: { email: userEmail, name, title, role: userRole, professorId } }
 }
