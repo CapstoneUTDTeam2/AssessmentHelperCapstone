@@ -21,6 +21,12 @@ def _next_weekday(start, weekday):
     return start + timedelta(days=(weekday - start.weekday()) % 7 or 7)
 
 
+@pytest.fixture(autouse=True)
+def _fresh(fresh_signups):
+    # Phase 2 tests start from signups that haven't sent requests yet.
+    return fresh_signups
+
+
 @pytest.fixture
 def after_signup_deadline(monkeypatch):
     # Cycle 2's signup deadline is today + 30 in the tests.
@@ -199,6 +205,8 @@ def test_notify_marks_list_ready_and_observee_sees_it(client, after_signup_deadl
     notes = client.get("/api/observees/3/notifications").json()["notifications"]
     assert len(notes) == 1
     assert notes[0]["type"] == "observer_list_ready"
+    assert {"signup_id", "status", "message", "observers"} <= set(notes[0])
+    assert notes[0]["status"] == "List Ready"
     assert "CS 4347.001" in notes[0]["message"]
     assert [o["observer_id"] for o in notes[0]["observers"]] == [1]
 

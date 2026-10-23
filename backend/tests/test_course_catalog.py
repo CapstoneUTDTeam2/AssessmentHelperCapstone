@@ -49,7 +49,9 @@ def test_teaching_history_groups_current_term(client):
     assert response.status_code == 200
     body = response.json()
     assert body["professor_id"] == 1
-    assert len(body["terms"]) == 1
+    # Sample data also has Alice teaching CS 4347 in Fall 2025, listed after the current term.
+    assert len(body["terms"]) == 2
+    assert (body["terms"][1]["semester"], body["terms"][1]["year"], body["terms"][1]["courses"]) == ("Fall", 2025, ["CS 4347"])
     term = body["terms"][0]
     assert (term["semester"], term["year"]) == ("Fall", 2026)
     assert term["courses"] == ["CS 1337", "CS 3354"]

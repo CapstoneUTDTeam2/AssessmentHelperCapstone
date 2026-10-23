@@ -136,7 +136,7 @@ def test_signup_preview_matches_database_rule(client):
     assert _eligible_ids(client, 4) == [7]
 
 
-def test_preview_matches_saved_list(client, monkeypatch):
+def test_preview_matches_saved_list(client, monkeypatch, fresh_signups):
     from app.api import observer_selection
 
     monkeypatch.setattr(observer_selection, "_today", lambda: _campus_today() + timedelta(days=31))
