@@ -1,20 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
+import { ApiError } from '../api/client'
+import { ingestCourseBook } from '../api/coursebook'
 import { getCourses } from '../api/courses'
 import type { CatalogCourse } from '../api/courses'
-import type { Course, Days, Section, SectionTone } from '../data/courseMock'
-import { LEVEL_COLORS } from '../theme'
-
-const SECTION_BADGES: Record<SectionTone, string> = {
-  ok: 'bg-[#3f8a55]',
-  needsObserver: 'bg-[#b3261e]',
-  overdue: 'bg-[#b3261e]',
-}
-
-const COURSE_DOTS = {
-  ok: 'bg-[#3f8a55]',
-  attention: 'bg-[#e0791a]',
-  alert: 'bg-[#b3261e]',
-}
+import type { Course, Days, Section } from '../data/courseMock'
 
 /** Schedule block colors, assigned to a course's instructors in order. */
 const INSTRUCTOR_PALETTE = ['#1c4532', '#0f1f17', '#e0791a', '#3f8a55', '#c4561a']
@@ -30,13 +19,12 @@ const DAY_INDEXES: Record<Days, number[]> = {
 /** Pixel height of one hour in the weekly schedule. */
 const HOUR_HEIGHT = 36
 
-type CourseFilter = 'all' | 'undergrad' | 'grad' | 'needsObserver'
+type CourseFilter = 'all' | 'undergrad' | 'grad'
 
 const COURSE_FILTERS: { key: CourseFilter; label: string; match: (c: Course) => boolean }[] = [
   { key: 'all', label: 'All', match: () => true },
   { key: 'undergrad', label: 'Undergrad', match: (c) => !isGraduate(c) },
   { key: 'grad', label: 'Grad', match: (c) => isGraduate(c) },
-  { key: 'needsObserver', label: 'Needs observer', match: (c) => needsObserverCount(c) > 0 },
 ]
 
 type CourseSort = 'code' | 'title' | 'sections'
@@ -56,16 +44,6 @@ const SECTION_SORTS: Record<SectionSort, { label: string; compare: (a: Section, 
 
 function isGraduate(course: Course) {
   return Number(course.code.split(' ')[1]) >= 5000
-}
-
-function needsObserverCount(course: Course) {
-  return course.sections.filter((s) => s.tone === 'needsObserver').length
-}
-
-function courseTone(course: Course): keyof typeof COURSE_DOTS {
-  if (course.sections.some((s) => s.tone === 'overdue')) return 'alert'
-  if (course.sections.some((s) => s.tone === 'needsObserver')) return 'attention'
-  return 'ok'
 }
 
 function instructorsOf(course: Course) {
@@ -97,14 +75,14 @@ function fromCatalog(course: CatalogCourse): Course {
     sections: course.sections.map((section) => ({
       number: section.section_name,
       instructor: section.instructors[0]?.professor_name ?? '—',
-      rank: 'Assistant Prof.',
+      rank: 'Lecturer',
       days: asDays(section.meeting_days),
       start: section.start_time,
       end: section.end_time,
-      room: '—',
+      room: '',
       enrolled: 0,
       capacity: 0,
-      status: course.course_description || '—',
+      status: '',
       tone: 'ok',
     })),
   }
@@ -117,19 +95,23 @@ function CoursePage() {
   const [selectedCode, setSelectedCode] = useState('')
   const [catalog, setCatalog] = useState<{ term: string; courses: Course[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [pulling, setPulling] = useState(false)
+  const [pullMessage, setPullMessage] = useState<string | null>(null)
+
+  const loadCourses = (signal?: AbortSignal) =>
+    getCourses(signal).then((body) => {
+      const courses = body.courses.map(fromCatalog)
+      setCatalog({ term: `${body.semester} ${body.year}`, courses })
+      setSelectedCode((current) => current || courses[0]?.code || '')
+      setError(null)
+    })
 
   useEffect(() => {
     const controller = new AbortController()
-    getCourses(controller.signal)
-      .then((body) => {
-        const courses = body.courses.map(fromCatalog)
-        setCatalog({ term: `${body.semester} ${body.year}`, courses })
-        setSelectedCode((current) => current || courses[0]?.code || '')
-      })
-      .catch((err: unknown) => {
-        if (controller.signal.aborted) return
-        setError(err instanceof Error ? err.message : 'Failed to load courses')
-      })
+    loadCourses(controller.signal).catch((err: unknown) => {
+      if (controller.signal.aborted) return
+      setError(err instanceof Error ? err.message : 'Failed to load courses')
+    })
     return () => controller.abort()
   }, [])
 
@@ -170,9 +152,35 @@ function CoursePage() {
         <div>
           <h1 className="text-xl font-semibold text-neutral-900">Course Overview</h1>
           <p className="mt-1 text-xs text-neutral-500">
-            {TERM} · {COURSES.length} courses · {totalSections} sections · from Courses, Sections, and TeachingAssignment
+            {TERM} · {COURSES.length} courses · {totalSections} sections · from UTD CourseBook into Courses, Sections, and
+            TeachingAssignment
           </p>
+          {pullMessage && <p className="mt-1 text-[11px] text-neutral-600">{pullMessage}</p>}
         </div>
+        <button
+          type="button"
+          disabled={pulling}
+          onClick={() => {
+            setPulling(true)
+            setPullMessage(null)
+            ingestCourseBook()
+              .then((result) => {
+                setPullMessage(
+                  `Imported ${result.courses} courses, ${result.sections} sections (${result.term})`,
+                )
+                return loadCourses()
+              })
+              .catch((err: unknown) => {
+                setPullMessage(
+                  err instanceof ApiError ? err.message : 'CourseBook pull failed; existing data was kept',
+                )
+              })
+              .finally(() => setPulling(false))
+          }}
+          className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 transition-colors hover:bg-neutral-50 disabled:opacity-60"
+        >
+          {pulling ? 'Syncing CourseBook…' : 'Sync CourseBook'}
+        </button>
       </header>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[220px_1fr]">
@@ -252,7 +260,6 @@ function CoursePage() {
                         {course.sections.length} sections · {instructorsOf(course).length} instructors
                       </p>
                     </div>
-                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${COURSE_DOTS[courseTone(course)]}`} aria-hidden="true" />
                   </button>
                 </li>
               )
@@ -275,7 +282,6 @@ function CoursePage() {
 
 function CourseHeader({ course }: { course: Course }) {
   const [subject, number] = course.code.split(' ')
-  const needsObserver = needsObserverCount(course)
 
   return (
     <section className="flex flex-wrap items-start gap-4 rounded-lg border border-neutral-200 bg-white p-4">
@@ -289,7 +295,6 @@ function CourseHeader({ course }: { course: Course }) {
         <span className="mt-1 inline-block rounded border border-neutral-200 px-1.5 py-px text-[9px] text-neutral-800">
           {isGraduate(course) ? 'Graduate' : 'Undergraduate'}
         </span>
-        <p className="mt-1 text-[11px] text-neutral-600">{course.department}</p>
         <dl className="mt-1.5 flex flex-wrap gap-x-5 gap-y-0.5 text-[10px] text-neutral-500">
           <div className="flex gap-1">
             <dt>Sections:</dt>
@@ -300,12 +305,6 @@ function CourseHeader({ course }: { course: Course }) {
             <dd className="font-semibold text-neutral-900">{instructorsOf(course).length}</dd>
           </div>
         </dl>
-        <p className="mt-0.5 text-[10px] text-neutral-500">
-          Needs observer:{' '}
-          <span className={needsObserver ? 'font-semibold text-[#e0791a]' : 'font-semibold text-neutral-900'}>
-            {needsObserver === 0 ? 'None' : `${needsObserver} section${needsObserver > 1 ? 's' : ''}`}
-          </span>
-        </p>
       </div>
     </section>
   )
@@ -345,21 +344,15 @@ function SectionsCard({ course, term }: { course: Course; term: string }) {
           <article key={section.number} className="rounded-md border border-neutral-200 bg-neutral-50 p-2.5">
             <h3 className="text-[10px] text-neutral-600">Section {section.number}</h3>
             <div className="mt-2 flex items-center gap-2">
-              <span className={`h-6 w-6 shrink-0 rounded-full ${LEVEL_COLORS[section.rank]}`} aria-hidden="true" />
+              <span className="h-6 w-6 shrink-0 rounded-full bg-[#1c4532]" aria-hidden="true" />
               <div className="min-w-0">
                 <p className="truncate text-[11px] font-semibold text-neutral-900">{section.instructor}</p>
-                <p className="text-[9px] text-neutral-500">{section.rank}</p>
               </div>
             </div>
             <p className="mt-2 text-[10px] text-neutral-900">{section.days}</p>
             <p className="text-[10px] text-neutral-600">
               {formatTime(section.start)}–{formatTime(section.end)}
             </p>
-            <span
-              className={`mt-2 inline-block rounded-full px-2 py-0.5 text-[9px] font-medium text-white ${SECTION_BADGES[section.tone]}`}
-            >
-              {section.status}
-            </span>
           </article>
         ))}
       </div>

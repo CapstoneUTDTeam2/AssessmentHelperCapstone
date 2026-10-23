@@ -318,10 +318,21 @@ def write(conn: Any, data: ImportData) -> None:
             'INSERT INTO Department (DepartmentID, DepartmentName) VALUES (%s,%s) '
             'ON CONFLICT (DepartmentID) DO UPDATE SET DepartmentName=EXCLUDED.DepartmentName', data.department
         )
+        semester, year = data.term[1], data.term[2]
         cur.execute(
-            'INSERT INTO AcademicTerm (TermID, Semester, YearNum) VALUES (%s,%s,%s) '
-            'ON CONFLICT (TermID) DO UPDATE SET Semester=EXCLUDED.Semester, YearNum=EXCLUDED.YearNum', data.term
+            'SELECT TermID FROM AcademicTerm WHERE Semester = %s AND YearNum = %s ORDER BY TermID LIMIT 1',
+            (semester, year),
         )
+        existing_term = cur.fetchone()
+        if existing_term:
+            term_pk = existing_term[0]
+        else:
+            term_pk = data.term[0]
+            cur.execute(
+                'INSERT INTO AcademicTerm (TermID, Semester, YearNum) VALUES (%s,%s,%s) '
+                'ON CONFLICT (TermID) DO UPDATE SET Semester=EXCLUDED.Semester, YearNum=EXCLUDED.YearNum',
+                (term_pk, semester, year),
+            )
         cur.executemany(
             'INSERT INTO Courses (CourseID, CourseName, CourseCode, CourseDescription) VALUES (%s,%s,%s,%s) '
             'ON CONFLICT (CourseID) DO UPDATE SET CourseName=EXCLUDED.CourseName, CourseCode=EXCLUDED.CourseCode, CourseDescription=EXCLUDED.CourseDescription',
@@ -337,7 +348,10 @@ def write(conn: Any, data: ImportData) -> None:
             'VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (SectionID) DO UPDATE SET '
             'SectionName=EXCLUDED.SectionName, CourseID=EXCLUDED.CourseID, TermID=EXCLUDED.TermID, '
             'MeetingDays=EXCLUDED.MeetingDays, StartTime=EXCLUDED.StartTime, EndTime=EXCLUDED.EndTime',
-            [(key, *value) for key, value in data.sections.items()],
+            [
+                (key, name, course_id, term_pk, days, start, end)
+                for key, (name, course_id, _term, days, start, end) in data.sections.items()
+            ],
         )
         cur.executemany(
             'INSERT INTO TeachingAssignment (SectionID, ProfessorID) VALUES (%s,%s) ON CONFLICT DO NOTHING',

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
+import { ingestCourseBook } from '../api/coursebook'
 import { deadlineDate, getCurrentCycle, updateCycleDeadlines } from '../api/cycles'
 import { ApiError } from '../api/client'
-import { DateField, Notice, Row, SettingsLayout } from '../components/settings'
+import { ActionButton, DateField, Notice, Row, SettingsLayout } from '../components/settings'
 import type { SettingsSection } from '../components/settings'
 
 type Deadlines = {
@@ -44,6 +45,8 @@ function SettingsPage() {
   const [draft, setDraft] = useState(EMPTY)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [pulling, setPulling] = useState(false)
+  const [pullMessage, setPullMessage] = useState<string | null>(null)
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved)
   const set = (key: keyof Deadlines, value: string) => setDraft((current) => ({ ...current, [key]: value }))
@@ -128,6 +131,45 @@ function SettingsPage() {
       ],
     },
     {
+      id: 'coursebook',
+      title: 'CourseBook',
+      description: 'Nebula Labs CourseBook fills Department, AcademicTerm, Courses, Sections, Professors, and TeachingAssignment',
+      content: [
+        <Notice key="notice" title="Source-backed tables only">
+          Rank and start term are not in CourseBook; those stay on Professors for the committee. If the pull fails,
+          existing rows are kept.
+        </Notice>,
+        <Row
+          key="pull"
+          label="UTD CourseBook (Nebula Labs API)"
+          description={
+            pullMessage ??
+            `CS sections for ${term === '—' ? 'the current cycle' : term} · meeting days and times only`
+          }
+        >
+          <ActionButton
+            onClick={() => {
+              if (pulling) return
+              setPulling(true)
+              setPullMessage(null)
+              ingestCourseBook()
+                .then((result) => {
+                  setPullMessage(
+                    `Imported ${result.courses} courses, ${result.sections} sections, ${result.professors} professors (${result.term})`,
+                  )
+                })
+                .catch((err: unknown) => {
+                  setPullMessage(err instanceof ApiError ? err.message : 'CourseBook pull failed; existing data was kept')
+                })
+                .finally(() => setPulling(false))
+            }}
+          >
+            {pulling ? 'Pulling…' : 'Update CourseBook data now'}
+          </ActionButton>
+        </Row>,
+      ],
+    },
+    {
       id: 'policy',
       title: 'Evaluation Policy',
       description: 'Encoded in the ProfessorEvaluationStatus view and matching functions. Not editable here.',
@@ -158,7 +200,7 @@ function SettingsPage() {
       {saveError && <p className="px-6 pt-4 text-[11px] text-[#b3261e]">{saveError}</p>}
       <SettingsLayout
         title="Settings"
-        subtitle="Only EvaluationCycle deadlines save. Policy, matching, CourseBook, and notifications have no tables."
+        subtitle="Deadlines save to EvaluationCycle. CourseBook pull writes courses, sections, professors, and teaching assignments."
         sections={sections}
         dirty={dirty}
         onSave={() => {
