@@ -1,12 +1,14 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { getProfessorEvaluationStatus } from '../api/evaluationStatus'
+import { DEMO_PROFESSOR_ID, loggedInProfessorId } from '../auth/session'
 import { SignupActions, SignupStatus } from '../components/SignupActions'
-import {
-  TEACHER_PROFILE,
-  TEACHER_TODAY,
-  UPCOMING,
-  WEEKLY_SCHEDULE,
-} from '../data/teacherMock'
-import type { UpcomingEvaluation, UpcomingKind, Weekday } from '../data/teacherMock'
+import { useSignups } from '../hooks/useSignups'
+import { MockDataBadge, MockDataNote } from '../components/MockData'
+import { TEACHER_PROFILE, TEACHER_TODAY, UPCOMING } from '../data/teacherMock'
+import type { UpcomingEvaluation, UpcomingKind, Weekday, WeeklyBlock } from '../data/teacherMock'
+import { weekdaysFromMeetingDays } from '../utils/calendar'
+import { useAlert } from '../hooks/useAlert'
+import { observerListReadyAlert } from '../hooks/useObserverMatching'
 
 const KIND_BADGES: Record<UpcomingKind, string> = {
   'Being observed': 'bg-[#e0791a]',
@@ -62,28 +64,24 @@ interface CalendarEvent {
   subtitle: string | null
   start: string
   end: string
-  tone: 'class' | 'observed' | 'observing' | 'office'
+  tone: 'class' | 'observed' | 'observing'
 }
 
 const EVENT_STYLES: Record<CalendarEvent['tone'], string> = {
   class: 'bg-[#1c4532] text-white',
   observed: 'bg-[#e0791a] text-white',
   observing: 'bg-[#c4561a] text-white',
-  office: 'border border-neutral-500 bg-white text-neutral-900',
 }
 
-function eventsOn(date: string, weekday: Weekday): CalendarEvent[] {
-  const observations = UPCOMING.filter((u) => u.date === date)
-  const classes = WEEKLY_SCHEDULE.filter((b) => b.days.includes(weekday)).map((block, i): CalendarEvent => {
-    if (!block.course) {
-      return { key: `office-${i}`, title: 'Office hours', subtitle: null, start: block.start, end: block.end, tone: 'office' }
-    }
+function eventsOn(date: string, weekday: Weekday, schedule: WeeklyBlock[], upcoming: UpcomingEvaluation[]): CalendarEvent[] {
+  const observations = upcoming.filter((u) => u.date === date)
+  const classes = schedule.filter((b) => b.days.includes(weekday) && b.course).map((block, i): CalendarEvent => {
     const observed = observations.find(
       (u) => u.kind === 'Being observed' && u.course === block.courseName && u.start === block.start,
     )
     return observed
       ? { key: `class-${i}`, title: `${block.course} · Observed`, subtitle: `${observed.otherProfessor} attending`, start: block.start, end: block.end, tone: 'observed' }
-      : { key: `class-${i}`, title: block.course, subtitle: block.room, start: block.start, end: block.end, tone: 'class' }
+      : { key: `class-${i}`, title: block.course ?? '', subtitle: null, start: block.start, end: block.end, tone: 'class' }
   })
   const observing = observations
     .filter((u) => u.kind === 'Observing')
@@ -99,22 +97,82 @@ function eventsOn(date: string, weekday: Weekday): CalendarEvent[] {
 }
 
 function TeacherDashboardPage() {
-  const thisMonth = TEACHER_TODAY.slice(0, 7)
-  const evaluationsThisMonth = UPCOMING.filter((u) => u.date.startsWith(thisMonth)).length
+  const { classes, cycle } = useSignups()
+  const today = cycle?.today ?? new Date().toISOString().slice(0, 10)
+  const { showAlert } = useAlert()
+  const [profile, setProfile] = useState({
+    name: TEACHER_PROFILE.name,
+    cycle: TEACHER_PROFILE.evaluationCycle,
+    nextEvaluation: TEACHER_PROFILE.nextEvaluation,
+    status: '',
+    rank: TEACHER_PROFILE.rank,
+  })
+
+  // TEMPORARY: previews the "observer list is ready" alert with sample data.
+  // Remove once useObserverListReadyAlert is wired to the logged-in professor.
+  const testObserverListReadyAlert = () =>
+    showAlert(
+      observerListReadyAlert({
+        course_code: 'CS 1337',
+        section_name: '001',
+        observers: [
+          { observer_id: 1, name: 'Sample Observer 1', department: 'Computer Science' },
+          { observer_id: 2, name: 'Sample Observer 2', department: 'Computer Science' },
+          { observer_id: 3, name: 'Sample Observer 3', department: 'Computer Science' },
+        ],
+      }),
+    )
+
+  useEffect(() => {
+    const professorId = loggedInProfessorId() ?? DEMO_PROFESSOR_ID
+    const controller = new AbortController()
+    getProfessorEvaluationStatus(professorId, controller.signal)
+      .then((status) => {
+        setProfile({
+          name: status.name,
+          cycle:
+            status.frequency_years === 1
+              ? 'Every year'
+              : status.frequency_years
+                ? `Every ${status.frequency_years} years`
+                : '—',
+          nextEvaluation: status.next_due_year ? `${status.next_due_semester ?? ''} ${status.next_due_year}`.trim() : '—',
+          status: status.status,
+          rank: status.current_level ?? '—',
+        })
+      })
+      .catch(() => {
+        /* keep demo labels */
+      })
+    return () => controller.abort()
+  }, [])
+
+  const schedule: WeeklyBlock[] = classes.map((row) => ({
+    course: row.course_code,
+    courseName: `${row.course_code} ${row.course_name}`,
+    days: weekdaysFromMeetingDays(row.meeting_days),
+    start: row.start_time.slice(0, 5),
+    end: row.end_time.slice(0, 5),
+    room: null,
+  }))
+  const upcoming: UpcomingEvaluation[] = UPCOMING
+  const termLabel = cycle ? `${cycle.semester} ${cycle.year}` : '—'
 
   return (
     <main className="min-w-0 flex-1 px-6 py-7">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-neutral-900">Welcome back, {TEACHER_PROFILE.name}</h1>
+          <h1 className="text-xl font-semibold text-neutral-900">Welcome back, {profile.name}</h1>
           <p className="mt-1 text-xs text-neutral-500">
-            Fall 2026 · Week of {weekLabel(mondayOf(TEACHER_TODAY))} · {evaluationsThisMonth} evaluations this month
+            {termLabel} · Week of {weekLabel(mondayOf(today))} · next due {profile.nextEvaluation || '—'}
+            {profile.status ? ` · ${profile.status}` : ''}
           </p>
           <SignupStatus />
         </div>
         <div className="flex gap-2">
           <button
             type="button"
+            onClick={testObserverListReadyAlert}
             className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 transition-colors hover:bg-neutral-50"
           >
             Edit Profile
@@ -124,45 +182,48 @@ function TeacherDashboardPage() {
       </header>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr]">
-        <ProfileCard />
-        <UpcomingCard />
+        <ProfileCard
+          name={profile.name}
+          cycle={profile.cycle}
+          nextEvaluation={profile.nextEvaluation}
+          rank={profile.rank}
+        />
+        <UpcomingCard today={TEACHER_TODAY} items={upcoming} mock />
       </div>
 
-      <ScheduleCard />
+      <ScheduleCard today={today} schedule={schedule} upcoming={upcoming} />
     </main>
   )
 }
 
-function ProfileCard() {
-  const p = TEACHER_PROFILE
+function ProfileCard({
+  name,
+  cycle,
+  nextEvaluation,
+  rank,
+}: {
+  name: string
+  cycle: string
+  nextEvaluation: string
+  rank: string
+}) {
   return (
     <section className="rounded-lg border border-neutral-200 bg-white p-4">
       <div className="flex items-start gap-4 border-b border-neutral-100 pb-4">
         <span className="h-14 w-14 shrink-0 rounded-full bg-[#c4561a]" aria-hidden="true" />
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-neutral-900">{p.name}</h2>
-          <p className="mt-0.5 text-[11px] text-neutral-500">{p.department}</p>
+          <h2 className="text-sm font-semibold text-neutral-900">{name}</h2>
+          <p className="mt-0.5 text-[11px] text-neutral-500">{TEACHER_PROFILE.department}</p>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
-            <span className="rounded-full bg-[#1c4532] px-2.5 py-0.5 text-[10px] font-medium text-white">{p.rank}</span>
-            <span className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-[10px] text-neutral-700">{p.track}</span>
+            <span className="rounded-full bg-[#1c4532] px-2.5 py-0.5 text-[10px] font-medium text-white">{rank}</span>
           </div>
         </div>
       </div>
       <dl className="mt-3 grid grid-cols-3 gap-3">
-        <ProfileStat label="Evaluation cycle" value={p.evaluationCycle} />
-        <ProfileStat label="Next evaluation" value={p.nextEvaluation} />
-        <ProfileStat label="Evaluations given" value={p.evaluationsGiven} />
+        <ProfileStat label="Evaluation cycle" value={cycle} />
+        <ProfileStat label="Next evaluation" value={nextEvaluation} />
+        <ProfileStat label="Observer pool" value="Joins on observee signup" />
       </dl>
-      <div className="mt-3">
-        <p className="text-[10px] text-neutral-500">Instructor level</p>
-        <div className="mt-1 flex gap-1.5">
-          {p.instructorLevels.map((level) => (
-            <span key={level} className="rounded border border-[#e0791a] px-2 py-0.5 text-[10px] text-[#e0791a]">
-              {level}
-            </span>
-          ))}
-        </div>
-      </div>
     </section>
   )
 }
@@ -176,26 +237,41 @@ function ProfileStat({ label, value }: { label: string; value: string }) {
   )
 }
 
-function UpcomingCard() {
+function UpcomingCard({
+  today,
+  items: upcoming,
+  mock,
+}: {
+  today: string
+  items: UpcomingEvaluation[]
+  mock?: boolean
+}) {
   const [sort, setSort] = useState<SortKey>('date')
 
   const items = useMemo(
     () =>
-      UPCOMING.filter((u) => u.date >= TEACHER_TODAY).sort(
+      upcoming.filter((u) => u.date >= today).sort(
         (a, b) =>
           (sort === 'type' ? a.kind.localeCompare(b.kind) : 0) ||
           a.date.localeCompare(b.date) ||
-          a.start.localeCompare(b.start),
+            a.start.localeCompare(b.start),
       ),
-    [sort],
+    [sort, today, upcoming],
   )
 
   return (
     <section className="min-w-0 rounded-lg border border-neutral-200 bg-white p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-neutral-900">Upcoming Evaluations</h2>
-          <p className="mt-0.5 text-[10px] text-neutral-500">Dates you are observed and dates you observe others</p>
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
+            Upcoming Evaluations
+            {mock && <MockDataBadge />}
+          </h2>
+          {mock ? (
+            <MockDataNote>No observation-request API yet. These sessions are placeholders.</MockDataNote>
+          ) : (
+            <p className="mt-0.5 text-[10px] text-neutral-500">Dates you are observed and dates you observe others</p>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-3 text-[11px]">
           <label className="flex items-center gap-1 text-neutral-500">
@@ -227,7 +303,7 @@ function UpcomingCard() {
 
 function UpcomingItem({ item }: { item: UpcomingEvaluation }) {
   const title = item.kind === 'Being observed' ? `Observed by ${item.otherProfessor}` : `Observing ${item.otherProfessor}`
-  const details = [item.course, `${item.start}–${item.end}`, item.room].filter(Boolean).join(' · ')
+  const details = [item.course, `${item.start}–${item.end}`].join(' · ')
   return (
     <li className="flex items-center gap-3 rounded-md bg-neutral-50 px-3 py-2">
       <div className="flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-md border border-neutral-200 bg-white">
@@ -254,9 +330,20 @@ function UpcomingItem({ item }: { item: UpcomingEvaluation }) {
   )
 }
 
-function ScheduleCard() {
-  const [monday, setMonday] = useState(() => mondayOf(TEACHER_TODAY))
-  const sections = WEEKLY_SCHEDULE.filter((b) => b.course).length
+function ScheduleCard({
+  today,
+  schedule,
+  upcoming,
+}: {
+  today: string
+  schedule: WeeklyBlock[]
+  upcoming: UpcomingEvaluation[]
+}) {
+  const [monday, setMonday] = useState(() => mondayOf(today))
+  useEffect(() => {
+    setMonday(mondayOf(today))
+  }, [today])
+  const sections = schedule.filter((b) => b.course).length
   const hours = Array.from({ length: LAST_HOUR - FIRST_HOUR + 1 }, (_, i) => FIRST_HOUR + i)
   const gridHeight = hours.length * HOUR_HEIGHT
 
@@ -272,8 +359,8 @@ function ScheduleCard() {
         <div className="flex items-center gap-4">
           <ul className="flex gap-3 text-[10px] text-neutral-600">
             <LegendItem color="bg-[#1c4532]" label="Class" />
-            <LegendItem color="bg-[#e0791a]" label="Being observed" />
-            <LegendItem color="bg-[#c4561a]" label="Observing" />
+            <LegendItem color="bg-[#e0791a]" label="Being observed (mock)" />
+            <LegendItem color="bg-[#c4561a]" label="Observing (mock)" />
           </ul>
           <div className="flex items-center rounded-md border border-neutral-200 text-[11px]">
             <button type="button" aria-label="Previous week" onClick={() => setMonday(addDays(monday, -7))} className="px-2 py-1 hover:bg-neutral-50">
@@ -281,7 +368,7 @@ function ScheduleCard() {
             </button>
             <button
               type="button"
-              onClick={() => setMonday(mondayOf(TEACHER_TODAY))}
+              onClick={() => setMonday(mondayOf(today))}
               className="border-x border-neutral-200 px-3 py-1 font-medium text-neutral-900 hover:bg-neutral-50"
             >
               Today
@@ -298,7 +385,7 @@ function ScheduleCard() {
           <div className="border-b border-neutral-200 bg-neutral-50" />
           {WEEKDAYS.map((day, i) => {
             const date = addDays(monday, i)
-            const isToday = date === TEACHER_TODAY
+            const isToday = date === today
             return (
               <div key={day} className="flex items-center justify-center gap-1.5 border-b border-l border-neutral-200 bg-neutral-50 py-1.5 text-[10px] text-neutral-600">
                 {day}
@@ -321,7 +408,14 @@ function ScheduleCard() {
             ))}
           </div>
           {WEEKDAYS.map((day, i) => (
-            <DayColumn key={day} date={addDays(monday, i)} weekday={day} hours={hours.length} />
+            <DayColumn
+              key={day}
+              date={addDays(monday, i)}
+              weekday={day}
+              hours={hours.length}
+              schedule={schedule}
+              upcoming={upcoming}
+            />
           ))}
         </div>
       </div>
@@ -329,8 +423,20 @@ function ScheduleCard() {
   )
 }
 
-function DayColumn({ date, weekday, hours }: { date: string; weekday: Weekday; hours: number }) {
-  const events = eventsOn(date, weekday)
+function DayColumn({
+  date,
+  weekday,
+  hours,
+  schedule,
+  upcoming,
+}: {
+  date: string
+  weekday: Weekday
+  hours: number
+  schedule: WeeklyBlock[]
+  upcoming: UpcomingEvaluation[]
+}) {
+  const events = eventsOn(date, weekday, schedule, upcoming)
   return (
     <div className="relative border-l border-neutral-200" style={{ height: hours * HOUR_HEIGHT }}>
       {Array.from({ length: hours }, (_, i) => (

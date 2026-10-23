@@ -1,0 +1,13 @@
+---
+description: Read the evaluation process before changing frontend, backend, or database behavior
+alwaysApply: true
+---
+
+# Read before change
+
+Before changing this repo, read `docs/READ-BEFORE-CHANGE.md` (same process as `docs/READ-BEFORE-CHANGE.pdf`).
+
+- That file is the product process. Follow it.
+- If it does not say something, it is unknown: do not invent a rule, and say so.
+- Do not put mock or UI copy that contradicts it (same-level same-department observers, assistant yearly, associate/full every 2 years, one course signup, observer pool on observee signup).
+- Mock data is allowed only where no API exists, and it must be visibly labeled **Mock data**.

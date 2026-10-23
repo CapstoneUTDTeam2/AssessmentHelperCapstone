@@ -1,7 +1,25 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
+import { getCourses } from '../api/courses'
+import type { CatalogCourse } from '../api/courses'
 import { authenticate, demoAccountFor } from '../auth/demoAccounts'
 import type { Role, User } from '../auth/demoAccounts'
+
+type FacultyChoice = { professor_id: number; professor_name: string }
+
+function instructorsThisTerm(courses: CatalogCourse[]): FacultyChoice[] {
+  const byId = new Map<number, string>()
+  for (const course of courses) {
+    for (const section of course.sections) {
+      for (const instructor of section.instructors) {
+        byId.set(instructor.professor_id, instructor.professor_name)
+      }
+    }
+  }
+  return [...byId.entries()]
+    .map(([professor_id, professor_name]) => ({ professor_id, professor_name }))
+    .sort((a, b) => a.professor_name.localeCompare(b.professor_name))
+}
 
 const ROLES: Record<Role, { label: string; description: string; viewName: string }> = {
   coordinator: {
@@ -25,17 +43,47 @@ function LoginPage({ onLogin }: LoginPageProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [faculty, setFaculty] = useState<FacultyChoice[]>([])
+  const [professorId, setProfessorId] = useState<number | null>(null)
   const demo = demoAccountFor(role)
+  const selectedFaculty = faculty.find((row) => row.professor_id === professorId) ?? faculty[0]
+
+  useEffect(() => {
+    if (role !== 'faculty') return
+    const controller = new AbortController()
+    getCourses(controller.signal)
+      .then((body) => {
+        const rows = instructorsThisTerm(body.courses)
+        setFaculty(rows)
+        setProfessorId((current) => {
+          if (current && rows.some((row) => row.professor_id === current)) return current
+          return rows.find((row) => row.professor_id !== 1)?.professor_id ?? rows[0]?.professor_id ?? 1
+        })
+      })
+      .catch(() => {
+        setFaculty([{ professor_id: 1, professor_name: 'Alice Johnson' }])
+        setProfessorId(1)
+      })
+    return () => controller.abort()
+  }, [role])
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     // TODO: replace the demo check with the auth API once the backend endpoint exists.
     const result = authenticate(email, password, role)
-    if (result.ok) {
-      onLogin(result.user)
-    } else {
+    if (!result.ok) {
       setError(result.error)
+      return
     }
+    if (role === 'faculty' && selectedFaculty) {
+      onLogin({
+        ...result.user,
+        name: selectedFaculty.professor_name,
+        professorId: selectedFaculty.professor_id,
+      })
+      return
+    }
+    onLogin(result.user)
   }
 
   return (
@@ -84,14 +132,14 @@ function LoginPage({ onLogin }: LoginPageProps) {
 
           <div className="mt-5">
             <label htmlFor="email" className="text-xs text-neutral-800">
-              UTD email
+              Email
             </label>
             <input
               id="email"
               type="email"
               autoComplete="email"
               required
-              placeholder="netid@utdallas.edu"
+              placeholder="you@example.com"
               value={email}
               onChange={(e) => {
                 setEmail(e.target.value)
@@ -101,15 +149,36 @@ function LoginPage({ onLogin }: LoginPageProps) {
             />
           </div>
 
-          <div className="mt-4">
-            <div className="flex items-center justify-between">
-              <label htmlFor="password" className="text-xs text-neutral-800">
-                Password
+          {role === 'faculty' && (
+            <div className="mt-4">
+              <label htmlFor="professor" className="text-xs text-neutral-800">
+                View as professor
               </label>
-              <a href="#" className="text-[11px] text-[#e0791a] hover:underline">
-                Forgot password?
-              </a>
+              <select
+                id="professor"
+                value={selectedFaculty?.professor_id ?? 1}
+                onChange={(e) => setProfessorId(Number(e.target.value))}
+                className="mt-1.5 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 focus:border-[#e0791a] focus:outline-none focus:ring-2 focus:ring-[#e0791a]/20"
+              >
+                {faculty.length === 0 && <option value={1}>Loading this term’s instructors…</option>}
+                {faculty.map((row) => (
+                  <option key={row.professor_id} value={row.professor_id}>
+                    {row.professor_name}
+                    {row.professor_id === 1 ? ' (seed Alice Johnson)' : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1.5 text-[11px] text-neutral-500">
+                Professors who teach this evaluation-cycle term. CourseBook names are anonymized; rank is
+                unknown until the committee sets it.
+              </p>
             </div>
+          )}
+
+          <div className="mt-4">
+            <label htmlFor="password" className="text-xs text-neutral-800">
+              Password
+            </label>
             <input
               id="password"
               type="password"
@@ -139,19 +208,6 @@ function LoginPage({ onLogin }: LoginPageProps) {
             <span aria-hidden="true">→</span>
           </button>
         </form>
-
-        <div className="my-4 flex items-center gap-3 text-[10px] text-neutral-400">
-          <span className="h-px flex-1 bg-neutral-200" />
-          or
-          <span className="h-px flex-1 bg-neutral-200" />
-        </div>
-
-        <button
-          type="button"
-          className="w-full rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-xs font-medium text-neutral-900 transition-colors hover:bg-neutral-50"
-        >
-          Continue with UTD SSO
-        </button>
 
         <div className="mt-5 rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-3 py-2.5 text-[11px] text-neutral-600">
           <p className="font-medium text-neutral-800">Demo login ({ROLES[role].label})</p>

@@ -3,7 +3,9 @@
 // progress and observer matches stay empty until their endpoints exist.
 
 import type { FacultyLevel, FacultyMember, StatusTone } from '../data/facultyMock'
+import { getCourses } from './courses'
 import { getEvaluationStatuses } from './evaluationStatus'
+import { getObserverAlerts } from './observerSelection'
 import type { CurrentTerm, EvaluationStatus, ProfessorEvaluationStatus } from './evaluationStatus'
 
 const LEVELS: Record<string, FacultyLevel> = {
@@ -45,8 +47,7 @@ export function toFacultyMember(p: ProfessorEvaluationStatus): FacultyMember {
     email: '',
     level: LEVELS[p.current_level ?? ''] ?? 'Lecturer',
     courses: [],
-    completed: 0,
-    required: 0,
+    observationsReceived: null,
     status: STATUS_LABELS[p.status],
     statusTone: TONES[p.status],
     nextEvaluationDate: nextDueSortKey(p),
@@ -68,6 +69,31 @@ export function toFacultyMember(p: ProfessorEvaluationStatus): FacultyMember {
 }
 
 export async function getFaculty(signal?: AbortSignal): Promise<{ term: CurrentTerm; members: FacultyMember[] }> {
-  const { current_term, professors } = await getEvaluationStatuses(undefined, signal)
-  return { term: current_term, members: professors.map(toFacultyMember) }
+  const [{ current_term, professors }, catalog, alerts] = await Promise.all([
+    getEvaluationStatuses(undefined, signal),
+    getCourses(signal).catch(() => null),
+    getObserverAlerts(signal).catch(() => null),
+  ])
+  const unmatchedIds = new Set((alerts?.alerts ?? []).filter((a) => a.level === 'none').map((a) => a.professor_id))
+  const lowIds = new Set((alerts?.alerts ?? []).filter((a) => a.level === 'low').map((a) => a.professor_id))
+  const coursesByProfessor = new Map<number, string[]>()
+  for (const course of catalog?.courses ?? []) {
+    for (const section of course.sections) {
+      for (const instructor of section.instructors) {
+        const list = coursesByProfessor.get(instructor.professor_id) ?? []
+        if (!list.includes(course.course_code)) list.push(course.course_code)
+        coursesByProfessor.set(instructor.professor_id, list)
+      }
+    }
+  }
+  return {
+    term: current_term,
+    members: professors.map((professor) => {
+      const member = toFacultyMember(professor)
+      member.courses = coursesByProfessor.get(professor.professor_id) ?? []
+      member.unmatched = unmatchedIds.has(professor.professor_id)
+      member.needsObserver = unmatchedIds.has(professor.professor_id) || lowIds.has(professor.professor_id)
+      return member
+    }),
+  }
 }

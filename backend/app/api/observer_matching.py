@@ -144,31 +144,68 @@ WHERE os.CycleID = :cycle_id
 ORDER BY os.signupid
 """
 
-# Pool members in the same department, with every section they teach this term.
-CANDIDATES_SQL = """
-SELECT
-    p.professorid,
-    p.professorname,
-    d.departmentname,
-    s.meetingdays,
-    s.starttime,
-    s.endtime,
-    c.coursecode
+# Victor's database rule (get_eligible_observers) is the one source of truth for a signup,
+# so the preview, the saved lists, and the request trigger always agree.
+SIGNUP_ELIGIBLE_SQL = """
+SELECT e.professorid, e.professorname, d.departmentname
+FROM get_eligible_observers(:signup_id) e
+JOIN Professors p ON p.ProfessorID = e.ProfessorID
+JOIN Department d ON p.ProfessorDepartment = d.DepartmentID
+ORDER BY e.professorname
+"""
+
+# Same rules for a day/time that isn't tied to a signup: same department, not the observee,
+# active observer this cycle, and taught the course level in the last four Fall/Spring terms.
+ADHOC_CANDIDATES_SQL = """
+WITH ranked_terms AS (
+    SELECT
+        t.TermID,
+        ROW_NUMBER() OVER (
+            ORDER BY t.YearNum DESC,
+                     CASE t.Semester WHEN 'Fall' THEN 2 WHEN 'Spring' THEN 1 END DESC
+        ) AS term_rank
+    FROM AcademicTerm t
+    WHERE t.Semester IN ('Fall', 'Spring')
+)
+SELECT p.professorid, p.professorname, d.departmentname
 FROM Professors p
 JOIN Department d ON p.ProfessorDepartment = d.DepartmentID
-JOIN TeachingAssignment ta ON ta.ProfessorID = p.ProfessorID
-JOIN Sections s ON ta.SectionID = s.SectionID
-JOIN Courses c ON s.CourseID = c.CourseID
 WHERE p.ProfessorID <> :faculty_id
   AND p.ProfessorDepartment = :department_id
-  AND s.TermID = :term_id
   AND EXISTS (
       SELECT 1
-      FROM ObservationSignup os
-      WHERE os.ObserveeProfessorID = p.ProfessorID
-        AND os.CycleID = :cycle_id
+      FROM ObserverEnrollment oe
+      WHERE oe.ProfessorID = p.ProfessorID
+        AND oe.CycleID = :cycle_id
+        AND oe.Status = 'Active'
   )
-ORDER BY p.professorname, s.sectionid
+  AND EXISTS (
+      SELECT 1
+      FROM TeachingAssignment ta
+      JOIN Sections s ON s.SectionID = ta.SectionID
+      JOIN Courses c ON c.CourseID = s.CourseID
+      JOIN ranked_terms history_term ON history_term.TermID = s.TermID
+      JOIN ranked_terms current_term ON current_term.TermID = :term_id
+      WHERE ta.ProfessorID = p.ProfessorID
+        AND history_term.term_rank BETWEEN current_term.term_rank AND current_term.term_rank + 3
+        AND LEFT(SPLIT_PART(c.CourseCode, ' ', 2), 1) = :level_digit
+  )
+ORDER BY p.professorname
+"""
+
+AVAILABILITY_SQL = """
+SELECT professorid, weekday, starttime, endtime
+FROM ObserverAvailability
+WHERE CycleID = :cycle_id
+  AND ProfessorID = ANY(:professor_ids)
+"""
+
+TERM_SECTIONS_SQL = """
+SELECT ta.professorid, s.meetingdays, s.starttime, s.endtime
+FROM TeachingAssignment ta
+JOIN Sections s ON ta.SectionID = s.SectionID
+WHERE s.TermID = :term_id
+  AND ta.ProfessorID = ANY(:professor_ids)
 """
 
 
@@ -314,43 +351,75 @@ def _load_target_section(conn, request, cycle):
     return section
 
 
-def _eligible_observers(rows, course_lvl, requested_days, window_start, window_end, point_only):
-    by_professor = {}
-    for row in rows:
-        entry = by_professor.setdefault(
-            row["professorid"],
-            {
-                "observer_id": row["professorid"],
-                "name": row["professorname"],
-                "department": row["departmentname"],
-                "levels": set(),
-                "busy": False,
-            },
-        )
-        level = course_level(row["coursecode"])
-        if level is not None:
-            entry["levels"].add(level)
-        if is_busy(
-            row["meetingdays"],
+def _observer(row):
+    return {
+        "observer_id": row["professorid"],
+        "name": row["professorname"],
+        "department": row["departmentname"],
+    }
+
+
+def _signup_eligible(conn, signup_id):
+    rows = conn.execute(text(SIGNUP_ELIGIBLE_SQL), {"signup_id": signup_id}).mappings().all()
+    return [_observer(row) for row in rows]
+
+
+def _covers(slot_start, slot_end, window_start, window_end, point_only):
+    if None in (slot_start, slot_end, window_start, window_end):
+        return False
+    if point_only:
+        return slot_start <= window_start < slot_end
+    return slot_start <= window_start and slot_end >= window_end
+
+
+def _adhoc_eligible(conn, faculty_id, department_id, cycle, level, requested_days, window_start, window_end, point_only):
+    candidates = conn.execute(
+        text(ADHOC_CANDIDATES_SQL),
+        {
+            "faculty_id": faculty_id,
+            "department_id": department_id,
+            "cycle_id": cycle["cycleid"],
+            "term_id": cycle["termid"],
+            "level_digit": str(level // 1000),
+        },
+    ).mappings().all()
+    if not candidates:
+        return []
+    ids = [row["professorid"] for row in candidates]
+    availability, sections = {}, {}
+    for row in conn.execute(
+        text(AVAILABILITY_SQL), {"cycle_id": cycle["cycleid"], "professor_ids": ids}
+    ).mappings():
+        availability.setdefault(row["professorid"], {})[row["weekday"]] = (
             parse_clock(row["starttime"]),
             parse_clock(row["endtime"]),
-            requested_days,
-            window_start,
-            window_end,
-            point_only,
-        ):
-            entry["busy"] = True
+        )
+    for row in conn.execute(
+        text(TERM_SECTIONS_SQL), {"term_id": cycle["termid"], "professor_ids": ids}
+    ).mappings():
+        sections.setdefault(row["professorid"], []).append(row)
 
-    eligible = [
-        {
-            "observer_id": entry["observer_id"],
-            "name": entry["name"],
-            "department": entry["department"],
-        }
-        for entry in by_professor.values()
-        if course_lvl in entry["levels"] and not entry["busy"]
-    ]
-    eligible.sort(key=lambda item: item["name"])
+    eligible = []
+    for candidate in candidates:
+        slots = availability.get(candidate["professorid"], {})
+        for day in sorted(parse_days(requested_days)):
+            if day not in slots or not _covers(*slots[day], window_start, window_end, point_only):
+                continue
+            busy = any(
+                is_busy(
+                    row["meetingdays"],
+                    parse_clock(row["starttime"]),
+                    parse_clock(row["endtime"]),
+                    day,
+                    window_start,
+                    window_end,
+                    point_only,
+                )
+                for row in sections.get(candidate["professorid"], [])
+            )
+            if not busy:
+                eligible.append(_observer(candidate))
+                break
     return eligible
 
 
@@ -378,19 +447,15 @@ def build_match_result(conn, faculty_id, section, cycle, requested_day=None, req
     if level is None:
         raise HTTPException(status_code=400, detail="Course code has no course level")
 
-    rows = conn.execute(
-        text(CANDIDATES_SQL),
-        {
-            "faculty_id": faculty_id,
-            "department_id": observee["departmentid"],
-            "term_id": cycle["termid"],
-            "cycle_id": cycle["cycleid"],
-        },
-    ).mappings().all()
-
-    eligible = _eligible_observers(
-        rows, level, requested_days, window_start, window_end, point_only
-    )
+    if signup_id is None and requested_day is None and requested_time is None:
+        signup_id = section.get("signupid")
+    if signup_id is not None and requested_day is None and requested_time is None:
+        eligible = _signup_eligible(conn, signup_id)
+    else:
+        eligible = _adhoc_eligible(
+            conn, faculty_id, observee["departmentid"], cycle, level,
+            requested_days, window_start, window_end, point_only,
+        )
     payload = {
         "faculty_id": observee["professorid"],
         "faculty_name": observee["professorname"],

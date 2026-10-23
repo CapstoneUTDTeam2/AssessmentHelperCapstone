@@ -259,9 +259,7 @@ ALTER TABLE ObservationSignup
     REFERENCES TeachingAssignment (SectionID, ProfessorID);
 
 
---Filled out in accordance to the frontend
---Observations last forever
--- (currently on hold due to current observation criteria challenges)
+-- Observations
 CREATE TABLE Observation (
     ObservationID INT PRIMARY KEY,
     SignupID INT NOT NULL,
@@ -457,6 +455,8 @@ CREATE TABLE PostObservationSurveyResponse (
     ProcessStatus VARCHAR(50),
     Difficulties TEXT,
     ImprovementConditions TEXT,
+    ObserverSigned BOOLEAN NOT NULL DEFAULT FALSE,
+    ObserveeSigned BOOLEAN NOT NULL DEFAULT FALSE;
     foreign key (CycleID) references EvaluationCycle(CycleID),
     foreign key (ProfessorID) references Professors(ProfessorID),
     foreign key (SignupID) references ObservationSignup(SignupID)

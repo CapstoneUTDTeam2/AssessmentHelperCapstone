@@ -2,13 +2,12 @@
 // faculty account. Swap these for API responses once the backend is wired up.
 
 /** Fixed "today" so the mock schedule lines up with the design. */
-export const TEACHER_TODAY = '2026-09-16'
+export const TEACHER_TODAY = '2026-10-20'
 
 export const TEACHER_PROFILE = {
   name: 'Professor A',
-  department: 'Computer Science · Erik Jonsson School',
+  department: 'Computer Science',
   rank: 'Associate Professor',
-  track: 'Tenure-track',
   evaluationCycle: 'Every 2 years',
   nextEvaluation: 'Spring 2027',
   evaluationsGiven: '4 this year',
@@ -39,13 +38,36 @@ export const UPCOMING: UpcomingEvaluation[] = [
   { id: 1, date: '2026-09-16', kind: 'Being observed', otherProfessor: 'Professor I', course: 'CS 3345 Data Structures', section: '001', start: '10:00', end: '11:15', room: 'ECSS 2.410', confirmed: true },
   { id: 2, date: '2026-09-24', kind: 'Observing', otherProfessor: 'Professor C', course: 'CS 2305 Discrete Math', section: '002', start: '10:00', end: '11:15', room: 'ECSS 2.311', confirmed: true },
   { id: 3, date: '2026-10-14', kind: 'Observing', otherProfessor: 'Professor H', course: 'CS 1336 Programming Fundamentals', section: '002', start: '09:00', end: '09:50', room: 'ECSS 2.415', confirmed: true, reportDue: '2026-10-21' },
-  { id: 4, date: '2026-10-14', kind: 'Being observed', otherProfessor: 'Professor F', course: 'CS 4348 Operating Systems', section: '001', start: '14:30', end: '15:45', room: 'ECSS 2.306', confirmed: false },
+  { id: 4, date: '2026-10-28', kind: 'Being observed', otherProfessor: 'Professor F', course: 'CS 4348 Operating Systems', section: '001', start: '14:30', end: '15:45', room: 'ECSS 2.306', confirmed: false },
 ]
 
-export type Weekday = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri'
+export type ReportRating = '5' | '4' | '3' | '2' | '1' | 'N/A'
+
+/** A colleague's submitted report on one of your classes, waiting for you to review and sign. */
+export interface ReceivedReport {
+  /** ISO date the observer signed. */
+  observerSignedOn: string
+  /** Rating per criterion id. */
+  ratings: Record<number, ReportRating>
+  strengths: string
+  growth: string
+}
+
+/** Reports on your classes, keyed by the "Being observed" session id in UPCOMING. */
+export const RECEIVED_REPORTS: Record<number, ReceivedReport> = {
+  1: {
+    observerSignedOn: '2026-09-21',
+    ratings: { 1: '4', 2: 'N/A', 5: '4', 6: '3', 7: '5', 8: '4', 9: '5', 10: '5', 11: '4' },
+    strengths:
+      'Clear explanations of tree rotations with well-chosen examples. Questions were answered patiently and tied back to earlier material.',
+    growth: 'Build in a short pair activity mid-lecture so more students get a chance to work through an example themselves.',
+  },
+}
+
+export type Weekday ='Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri'
 
 export interface WeeklyBlock {
-  /** Course number, e.g. "CS 3345"; omitted for office hours. */
+  /** Course number, e.g. "CS 3345". */
   course: string | null
   /** Full course name, used to match observations to this class. */
   courseName: string | null
@@ -55,21 +77,17 @@ export interface WeeklyBlock {
   room: string | null
 }
 
-/** Professor A's recurring Fall 2026 schedule: 4 sections plus office hours. */
+/** Professor A's recurring Fall 2026 schedule. */
 export const WEEKLY_SCHEDULE: WeeklyBlock[] = [
   { course: 'CS 3345', courseName: 'CS 3345 Data Structures', days: ['Mon', 'Wed'], start: '10:00', end: '11:15', room: 'ECSS 2.410' },
   { course: 'CS 3345', courseName: 'CS 3345 Data Structures', days: ['Mon', 'Wed'], start: '13:00', end: '14:15', room: 'ECSS 2.410' },
   { course: 'CS 2336', courseName: 'CS 2336 Object-Oriented Programming', days: ['Tue', 'Thu'], start: '13:00', end: '14:15', room: 'ECSN 2.120' },
   { course: 'CS 4348', courseName: 'CS 4348 Operating Systems', days: ['Mon', 'Wed'], start: '14:30', end: '15:45', room: 'ECSS 2.306' },
-  { course: null, courseName: null, days: ['Tue'], start: '09:00', end: '10:00', room: null },
-  { course: null, courseName: null, days: ['Fri'], start: '11:00', end: '12:00', room: null },
 ]
 
-/** Contact and appointment details shown on the My Profile page. */
+/** Appointment details shown on the My Profile page. */
 export const PROFILE_DETAILS = {
   contact: [
-    ['UTD ID', 'MXA210045'],
-    ['Email', 'professor.a@utdallas.edu'],
     ['Office', 'ECSS 4.702'],
     ['Office hours', 'Tue 9–10 AM · Fri 11 AM–12 PM'],
     ['Department', 'Computer Science'],
@@ -77,12 +95,12 @@ export const PROFILE_DETAILS = {
   ],
   appointment: [
     ['Hire level', 'Associate Professor'],
-    ['Hire date', 'Aug 15, 2019'],
+    ['Start term', 'Fall 2019'],
     ['Tenure status', 'Tenured (May 2025)'],
     ['Evaluation cycle', 'Every 2 years'],
     ['Last evaluation', 'Mar 12, 2025 · Meets expectations'],
     ['Next evaluation', 'Spring 2027 · due Mar 2027'],
-    ['Evaluations required', '2 per cycle (1 remaining)'],
+    ['Observations this cycle', '1 received'],
     ['Can be observed by', 'Associate or Full Professors'],
     ['Can observe', 'Assistant Professors, Lecturers'],
   ],
@@ -100,7 +118,7 @@ export interface CurrentCourse {
   capacity: number
 }
 
-/** Fall 2026 sections, as pulled from UTD CourseBook. */
+/** Fall 2026 sections. Rooms and enrollment are not in the database. */
 export const CURRENT_COURSES: CurrentCourse[] = [
   { course: 'CS 3345', title: 'Data Structures & Algorithm Analysis', section: '001', days: 'MW', start: '10:00', end: '11:15', room: 'ECSS 2.410', enrolled: 118, capacity: 120 },
   { course: 'CS 3345', title: 'Data Structures & Algorithm Analysis', section: '002', days: 'MW', start: '13:00', end: '14:15', room: 'ECSS 2.410', enrolled: 104, capacity: 120 },
@@ -141,8 +159,40 @@ export const EVALUATION_HISTORY: PastEvaluation[] = [
   { date: '2021-03', observer: 'Professor D', course: 'CS 3345', outcome: 'Exceeds expectations' },
 ]
 
-/** Formal evaluations this faculty member must receive in the current cycle. */
-export const EVALUATION_REQUIREMENT = { received: 1, required: 2, nextDue: 'Mar 2027', cycle: '2-year cycle' }
+/**
+ * This faculty member's evaluation cycle. Rank sets how often an evaluation is
+ * due (Assistant: every year, Associate/Full: every 2 years). How many
+ * observations one evaluation needs is not confirmed with the client, so we
+ * only count observations received and don't show a required number.
+ */
+export const EVALUATION_REQUIREMENT = {
+  /** Peer observations received since the last formal evaluation. */
+  observationsReceived: 1,
+  frequency: 'Every 2 years',
+  nextDue: 'Mar 2027',
+  /** ISO year-month of the next formal evaluation. */
+  nextDueMonth: '2027-03',
+  cycle: '2-year cycle',
+}
+
+export interface OpenSignup {
+  id: number
+  name: string
+  email: string
+  course: string
+  section: string
+  days: string
+  /** "HH:MM" 24-hour. */
+  start: string
+  end: string
+}
+
+/** Colleagues signed up to be observed this cycle who still need an observer. */
+export const OPEN_SIGNUPS: OpenSignup[] = [
+  { id: 1, name: 'Professor B', email: 'profb@example.edu', course: 'CS 4337', section: '001', days: 'Mon / Wed', start: '13:00', end: '14:15' },
+  { id: 2, name: 'Professor D', email: 'profd@example.edu', course: 'CS 3341', section: '002', days: 'Tue / Thu', start: '11:30', end: '12:45' },
+  { id: 3, name: 'Professor E', email: 'profe@example.edu', course: 'CS 2336', section: '501', days: 'Fri', start: '09:00', end: '11:45' },
+]
 
 export type HistoryType = 'Observing' | 'Observed' | 'Evaluation'
 
@@ -163,43 +213,4 @@ export const EVALUATION_LOG: HistoryEntry[] = [
   { id: 3, date: '2025-04-22', type: 'Observing', withCourse: 'Professor L · CS 2305-001', outcome: null, status: 'Report submitted' },
   { id: 4, date: '2025-03-12', type: 'Evaluation', withCourse: 'Evaluation Committee · Formal evaluation', outcome: 'Meets expectations', status: 'Closed' },
   { id: 5, date: '2024-11-05', type: 'Observed', withCourse: 'Professor I · CS 4348-001', outcome: 'Effective', status: 'Report received' },
-]
-
-export interface ObserverMatch {
-  id: number
-  name: string
-  rank: string
-  avatar: 'green' | 'orange'
-  /** e.g. "CS 4348 Sec 002 · Mon/Wed 10:00". */
-  teaching: string
-  /** Course level the colleague teaches at, in hundreds (6000 = "6000s"). */
-  level: number
-}
-
-export interface AvailableObserver extends ObserverMatch {
-  /** Window the observer can attend, e.g. "Oct 5–16", plus its ISO start for sorting. */
-  available: string
-  availableFrom: string
-}
-
-export interface ObserverRequest extends ObserverMatch {
-  /** ISO date the colleague needs an answer by. */
-  due: string
-}
-
-/** This faculty member's instructor level; observers must teach above it. */
-export const MY_LEVEL = 4000
-
-export const AVAILABLE_OBSERVERS: AvailableObserver[] = [
-  { id: 1, name: 'Professor I', rank: 'Professor', avatar: 'green', teaching: 'CS 4348 Sec 002 · Mon/Wed 10:00', level: 6000, available: 'Oct 5–16', availableFrom: '2026-10-05' },
-  { id: 2, name: 'Professor F', rank: 'Associate Prof.', avatar: 'orange', teaching: 'CS 5343 Sec 001 · Tue/Thu 13:00', level: 5000, available: 'Oct 12–23', availableFrom: '2026-10-12' },
-  { id: 3, name: 'Professor M', rank: 'Professor', avatar: 'green', teaching: 'CS 6363 Sec 001 · Mon/Wed 15:00', level: 6000, available: 'Nov 2–13', availableFrom: '2026-11-02' },
-  { id: 4, name: 'Professor J', rank: 'Associate Prof.', avatar: 'orange', teaching: 'CS 5348 Sec 001 · Mon/Wed 16:00', level: 5000, available: 'Nov 16–27', availableFrom: '2026-11-16' },
-  { id: 5, name: 'Professor D', rank: 'Professor', avatar: 'green', teaching: 'CS 6375 Sec 001 · Tue/Thu 14:30', level: 6000, available: 'Nov 9–20', availableFrom: '2026-11-09' },
-  { id: 6, name: 'Professor N', rank: 'Associate Prof.', avatar: 'green', teaching: 'CS 5333 Sec 001 · Fri 10:00', level: 5000, available: 'Nov 30–Dec 4', availableFrom: '2026-11-30' },
-]
-
-export const OBSERVER_REQUESTS: ObserverRequest[] = [
-  { id: 1, name: 'Professor G', rank: 'Assistant Prof.', avatar: 'orange', teaching: 'CS 1337 Sec 002 · Tue/Thu 11:30', level: 1000, due: '2026-09-14' },
-  { id: 2, name: 'Professor E', rank: 'Lecturer', avatar: 'orange', teaching: 'CS 1336 Sec 004 · Mon/Wed 09:00', level: 2000, due: '2026-10-01' },
 ]

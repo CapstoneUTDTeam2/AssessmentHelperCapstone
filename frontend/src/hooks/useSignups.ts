@@ -1,15 +1,18 @@
 import { createContext, useContext } from 'react'
-import type { ObserveAvailability } from '../components/ObserveSignupDialog'
-import type { ObservedSignup } from '../components/ObservedSignupDialog'
+import type { ObserveeClass } from '../api/classes'
+import type { EvaluationCycle } from '../api/cycles'
+import type { ObserveeSignup } from '../api/signups'
 
-/** The faculty member's sign-ups this cycle, shared by the Dashboard and Evaluations pages. */
+/** Observee signup for this cycle, shared by the faculty Dashboard and Evaluations pages. */
 export interface Signups {
-  /** Signed up to observe colleagues, with the days and hours they can do it. */
-  observing: ObserveAvailability | null
-  /** Signed up to be observed in one class on one day. */
-  observed: ObservedSignup | null
-  setObserving: (availability: ObserveAvailability) => void
-  setObserved: (signup: ObservedSignup) => void
+  professorId: number | null
+  classes: ObserveeClass[]
+  cycle: EvaluationCycle | null
+  signup: ObserveeSignup | null
+  loading: boolean
+  error: string | null
+  submitObserved: (sectionId: number, dates: string[]) => Promise<void>
+  refresh: () => void
 }
 
 export const SignupContext = createContext<Signups | null>(null)

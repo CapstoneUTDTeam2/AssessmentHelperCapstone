@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { EVALUATIONS, MOCK_TODAY } from '../data/dashboardMock'
 import type { EvaluationRow, EvaluationStatus } from '../data/dashboardMock'
+import { MockDataBadge, MockDataNote } from './MockData'
 
 const STATUS_STYLES: Record<EvaluationStatus, string> = {
   Overdue: 'bg-[#b3261e]',
@@ -17,7 +18,7 @@ const FILTERS: { key: FilterKey; label: string; match: (row: EvaluationRow) => b
   { key: 'overdue', label: 'Overdue', match: (r) => r.status === 'Overdue' || r.status === 'Report overdue', showCount: true },
   { key: 'unmatched', label: 'Unmatched', match: (r) => r.status === 'Unmatched', showCount: true },
   { key: 'awaiting', label: 'Awaiting report', match: (r) => r.status === 'Report overdue', showCount: true },
-  { key: 'week', label: 'This week', match: (r) => isWithinDays(r.due, MOCK_TODAY, 7), showCount: false },
+  { key: 'week', label: 'This week', match: () => false, showCount: false },
 ]
 
 type SortKey = 'faculty' | 'level' | 'observer' | 'session' | 'due' | 'status'
@@ -40,21 +41,22 @@ function formatDue(date: string) {
   return new Date(`${date}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-const CAN_REMIND: EvaluationStatus[] = ['Overdue', 'Report overdue']
-
 interface EvaluationsCardProps {
-  /** Show a "Remind" button next to overdue items (Evaluations page). */
-  showRemind?: boolean
+  rows?: EvaluationRow[]
+  today?: string
 }
 
-function EvaluationsCard({ showRemind = false }: EvaluationsCardProps) {
-  const [reminded, setReminded] = useState<Set<number>>(() => new Set())
+function EvaluationsCard({ rows: incoming = [], today = MOCK_TODAY }: EvaluationsCardProps) {
+  const usingMock = incoming.length === 0
+  const evaluations = usingMock ? EVALUATIONS : incoming
   const [filter, setFilter] = useState<FilterKey>('all')
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'due', dir: 'asc' })
-
   const rows = useMemo(() => {
-    const match = FILTERS.find((f) => f.key === filter)!.match
-    const sorted = EVALUATIONS.filter(match).sort((a, b) => {
+    const match =
+      filter === 'week'
+        ? (r: EvaluationRow) => isWithinDays(r.due, today, 7)
+        : FILTERS.find((f) => f.key === filter)!.match
+    const sorted = evaluations.filter(match).sort((a, b) => {
       const cmp = (a[sort.key] ?? '').localeCompare(b[sort.key] ?? '')
       return sort.dir === 'asc' ? cmp : -cmp
     })
@@ -62,11 +64,7 @@ function EvaluationsCard({ showRemind = false }: EvaluationsCardProps) {
       outstanding: sorted.filter((r) => r.group === 'outstanding'),
       upcoming: sorted.filter((r) => r.group === 'upcoming'),
     }
-  }, [filter, sort])
-
-  const remind = showRemind
-    ? { sent: reminded, send: (id: number) => setReminded((prev) => new Set(prev).add(id)) }
-    : null
+  }, [evaluations, filter, sort, today])
 
   const toggleSort = (key: SortKey) =>
     setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }))
@@ -75,20 +73,30 @@ function EvaluationsCard({ showRemind = false }: EvaluationsCardProps) {
     <section className="min-w-0 rounded-lg border border-neutral-200 bg-white p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-sm font-semibold text-neutral-900">Outstanding &amp; Upcoming Evaluations</h2>
-          <p className="mt-0.5 text-[10px] text-neutral-500">
-            Overdue, unmatched, and awaiting-report items first · then sessions in the next 30 days
-          </p>
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
+            Outstanding &amp; Upcoming Evaluations
+            {usingMock && <MockDataBadge />}
+          </h2>
+          {usingMock ? (
+            <MockDataNote>
+              No due/overdue rows from the API this cycle. Showing placeholder sessions.
+            </MockDataNote>
+          ) : (
+            <p className="mt-0.5 text-[10px] text-neutral-500">
+              Due and overdue faculty from the evaluation-status API · unmatched from observer-selection alerts
+            </p>
+          )}
         </div>
         <a href="#" className="shrink-0 text-[11px] text-[#e0791a] hover:underline" onClick={(e) => e.preventDefault()}>
-          View all {EVALUATIONS.length} →
+          View all {evaluations.length} →
         </a>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-1.5" role="group" aria-label="Filter evaluations">
         {FILTERS.map((f) => {
+          const match = f.key === 'week' ? (r: EvaluationRow) => isWithinDays(r.due, today, 7) : f.match
           const active = filter === f.key
-          const count = EVALUATIONS.filter(f.match).length
+          const count = evaluations.filter(match).length
           return (
             <button
               key={f.key}
@@ -140,8 +148,8 @@ function EvaluationsCard({ showRemind = false }: EvaluationsCardProps) {
             </tr>
           </thead>
           <tbody>
-            <GroupRows title="Outstanding" rows={rows.outstanding} remind={remind} />
-            <GroupRows title="Upcoming · Next 30 days" rows={rows.upcoming} remind={remind} />
+            <GroupRows title="Outstanding" rows={rows.outstanding} />
+            <GroupRows title="Upcoming · Next 30 days" rows={rows.upcoming} />
             {rows.outstanding.length + rows.upcoming.length === 0 && (
               <tr>
                 <td colSpan={COLUMNS.length} className="py-8 text-center text-neutral-500">
@@ -156,12 +164,7 @@ function EvaluationsCard({ showRemind = false }: EvaluationsCardProps) {
   )
 }
 
-interface RemindState {
-  sent: Set<number>
-  send: (id: number) => void
-}
-
-function GroupRows({ title, rows, remind }: { title: string; rows: EvaluationRow[]; remind: RemindState | null }) {
+function GroupRows({ title, rows }: { title: string; rows: EvaluationRow[] }) {
   if (rows.length === 0) return null
   return (
     <>
@@ -184,26 +187,13 @@ function GroupRows({ title, rows, remind }: { title: string; rows: EvaluationRow
           <td className="px-1.5 py-2.5 text-neutral-700">{row.session}</td>
           <td className="px-1.5 py-2.5 text-neutral-700">{formatDue(row.due)}</td>
           <td className="px-1.5 py-2.5">
-            <div className="flex items-center gap-1.5">
-              <span
-                className={`inline-block w-20 rounded-full py-0.5 text-center text-[9px] font-medium whitespace-nowrap text-white ${
-                  STATUS_STYLES[row.status]
-                }`}
-              >
-                {row.status}
-              </span>
-              {remind && CAN_REMIND.includes(row.status) && (
-                <button
-                  type="button"
-                  disabled={remind.sent.has(row.id)}
-                  onClick={() => remind.send(row.id)}
-                  aria-label={`Send reminder for ${row.faculty}`}
-                  className="rounded-full border border-[#e0791a] px-2.5 py-0.5 text-[9px] whitespace-nowrap text-[#e0791a] transition-colors hover:bg-[#e0791a]/10 disabled:border-neutral-300 disabled:text-neutral-400 disabled:hover:bg-transparent"
-                >
-                  {remind.sent.has(row.id) ? 'Reminded' : 'Remind'}
-                </button>
-              )}
-            </div>
+            <span
+              className={`inline-block w-20 rounded-full py-0.5 text-center text-[9px] font-medium whitespace-nowrap text-white ${
+                STATUS_STYLES[row.status]
+              }`}
+            >
+              {row.status}
+            </span>
           </td>
         </tr>
       ))}
