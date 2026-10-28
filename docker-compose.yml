@@ -32,10 +32,28 @@ services:
     volumes:
       - ./backend:/code
       - ./NebulaLabsIntegration:/ingest
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       db:
         condition: service_healthy
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      coursebook:
+        condition: service_completed_successfully
+
+  # Image build does not call Nebula. This runs once on compose up after db is healthy.
+  coursebook:
+    build: ./NebulaLabsIntegration
+    restart: "no"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      NEBULALABS_API_KEY: ${NEBULALABS_API_KEY}
+      ANONYMIZATION_KEY: ${ANONYMIZATION_KEY}
+      COURSEBOOK_TERM: ${COURSEBOOK_TERM:-26F}
+      COURSEBOOK_PREFIX: ${COURSEBOOK_PREFIX:-CS}
+    depends_on:
+      db:
+        condition: service_healthy
+    # Image ENTRYPOINT is python ingest.py (used by the tools profile). Override it here.
+    entrypoint: ["sh", "/app/on-start.sh"]
 
   ingest:
     profiles: ["tools"]

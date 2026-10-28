@@ -39,7 +39,9 @@ docker compose logs --tail=50 db
 
 ## 3. Import NebulaLabs data
 
-Specify the academic term and course subject you want to import (example: Fall 2025, Computer Science):
+`docker compose up` pulls CourseBook once the database is healthy (term `26F`, prefix `CS` unless `COURSEBOOK_TERM` / `COURSEBOOK_PREFIX` are set in `.env`). Image **build** does not call Nebula. Missing keys or a failed pull skip ingest and keep existing rows.
+
+To pull a different term by hand:
 
 ```bash
 docker compose --profile tools run --rm ingest --term 25F --prefix CS
