@@ -1,7 +1,5 @@
 import { useMemo, useState } from 'react'
-import { EVALUATIONS, MOCK_TODAY } from '../data/dashboardMock'
 import type { EvaluationRow, EvaluationStatus } from '../data/dashboardMock'
-import { MockDataBadge, MockDataNote } from './MockData'
 
 const STATUS_STYLES: Record<EvaluationStatus, string> = {
   Overdue: 'bg-[#b3261e]',
@@ -9,6 +7,7 @@ const STATUS_STYLES: Record<EvaluationStatus, string> = {
   Unmatched: 'bg-neutral-500',
   Pending: 'bg-[#e0791a]',
   Confirmed: 'bg-[#3f8a55]',
+  Completed: 'bg-[#1c4532]',
 }
 
 type FilterKey = 'all' | 'overdue' | 'unmatched' | 'awaiting' | 'week'
@@ -46,9 +45,7 @@ interface EvaluationsCardProps {
   today?: string
 }
 
-function EvaluationsCard({ rows: incoming = [], today = MOCK_TODAY }: EvaluationsCardProps) {
-  const usingMock = incoming.length === 0
-  const evaluations = usingMock ? EVALUATIONS : incoming
+function EvaluationsCard({ rows: evaluations = [], today = new Date().toISOString().slice(0, 10) }: EvaluationsCardProps) {
   const [filter, setFilter] = useState<FilterKey>('all')
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'due', dir: 'asc' })
   const rows = useMemo(() => {
@@ -73,19 +70,10 @@ function EvaluationsCard({ rows: incoming = [], today = MOCK_TODAY }: Evaluation
     <section className="min-w-0 rounded-lg border border-neutral-200 bg-white p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
-            Outstanding &amp; Upcoming Evaluations
-            {usingMock && <MockDataBadge />}
-          </h2>
-          {usingMock ? (
-            <MockDataNote>
-              No due/overdue rows from the API this cycle. Showing placeholder sessions.
-            </MockDataNote>
-          ) : (
-            <p className="mt-0.5 text-[10px] text-neutral-500">
-              Due and overdue faculty from the evaluation-status API · unmatched from observer-selection alerts
-            </p>
-          )}
+          <h2 className="text-sm font-semibold text-neutral-900">Outstanding &amp; Upcoming Evaluations</h2>
+          <p className="mt-0.5 text-[10px] text-neutral-500">
+            Due and overdue faculty from the evaluation-status API · observers from this cycle’s observations
+          </p>
         </div>
         <a href="#" className="shrink-0 text-[11px] text-[#e0791a] hover:underline" onClick={(e) => e.preventDefault()}>
           View all {evaluations.length} →
@@ -153,7 +141,7 @@ function EvaluationsCard({ rows: incoming = [], today = MOCK_TODAY }: Evaluation
             {rows.outstanding.length + rows.upcoming.length === 0 && (
               <tr>
                 <td colSpan={COLUMNS.length} className="py-8 text-center text-neutral-500">
-                  No evaluations match this filter.
+                  {evaluations.length === 0 ? 'No faculty are due or overdue this cycle.' : 'No evaluations match this filter.'}
                 </td>
               </tr>
             )}

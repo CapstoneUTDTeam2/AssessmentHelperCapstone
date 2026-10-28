@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
+import { login } from '../api/auth'
+import { ApiError } from '../api/client'
 import { getCourses } from '../api/courses'
 import type { CatalogCourse } from '../api/courses'
-import { authenticate, demoAccountFor } from '../auth/demoAccounts'
+import { MockDataBadge } from '../components/MockData'
+import { authenticate, demoAccountFor, isDemoEmail } from '../auth/demoAccounts'
 import type { Role, User } from '../auth/demoAccounts'
 
 type FacultyChoice = { professor_id: number; professor_name: string }
@@ -45,11 +48,14 @@ function LoginPage({ onLogin }: LoginPageProps) {
   const [error, setError] = useState<string | null>(null)
   const [faculty, setFaculty] = useState<FacultyChoice[]>([])
   const [professorId, setProfessorId] = useState<number | null>(null)
+  const [submitting, setSubmitting] = useState(false)
   const demo = demoAccountFor(role)
   const selectedFaculty = faculty.find((row) => row.professor_id === professorId) ?? faculty[0]
+  // The professor picker only applies to the demo faculty account; real logins are one professor.
+  const pickProfessor = role === 'faculty' && email.trim().toLowerCase() === demo.email
 
   useEffect(() => {
-    if (role !== 'faculty') return
+    if (!pickProfessor) return
     const controller = new AbortController()
     getCourses(controller.signal)
       .then((body) => {
@@ -65,11 +71,9 @@ function LoginPage({ onLogin }: LoginPageProps) {
         setProfessorId(1)
       })
     return () => controller.abort()
-  }, [role])
+  }, [pickProfessor])
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    // TODO: replace the demo check with the auth API once the backend endpoint exists.
+  const demoLogin = () => {
     const result = authenticate(email, password, role)
     if (!result.ok) {
       setError(result.error)
@@ -84,6 +88,35 @@ function LoginPage({ onLogin }: LoginPageProps) {
       return
     }
     onLogin(result.user)
+  }
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setSubmitting(true)
+    setError(null)
+    try {
+      const professor = await login(email.trim(), password)
+      if (role === 'coordinator' && !professor.is_ac) {
+        setError('This account does not have Assessment Coordinator access.')
+        return
+      }
+      onLogin({
+        email: professor.email,
+        name: professor.name,
+        title: role === 'coordinator' ? 'Assessment Committee' : (professor.current_level ?? 'Faculty'),
+        role,
+        professorId: professor.professor_id,
+        department: professor.department_name,
+      })
+    } catch (err) {
+      const rejected = err instanceof ApiError && err.status < 500
+      // Demo accounts still work when the backend is down or the seed has no password for them.
+      if (isDemoEmail(email)) demoLogin()
+      else if (rejected) setError(err.message)
+      else setError('Could not reach the login service. Try again, or use the demo login below.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -149,7 +182,7 @@ function LoginPage({ onLogin }: LoginPageProps) {
             />
           </div>
 
-          {role === 'faculty' && (
+          {pickProfessor && (
             <div className="mt-4">
               <label htmlFor="professor" className="text-xs text-neutral-800">
                 View as professor
@@ -169,8 +202,8 @@ function LoginPage({ onLogin }: LoginPageProps) {
                 ))}
               </select>
               <p className="mt-1.5 text-[11px] text-neutral-500">
-                Professors who teach this evaluation-cycle term. CourseBook names are anonymized; rank is
-                unknown until the committee sets it.
+                Demo login only. Professors who teach this evaluation-cycle term. CourseBook names are
+                anonymized; rank is unknown until the committee sets it.
               </p>
             </div>
           )}
@@ -202,15 +235,19 @@ function LoginPage({ onLogin }: LoginPageProps) {
 
           <button
             type="submit"
-            className="mt-5 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#e0791a] px-4 py-2.5 text-xs font-medium text-white transition-colors hover:bg-[#c96a12]"
+            disabled={submitting}
+            className="mt-5 flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#e0791a] px-4 py-2.5 text-xs font-medium text-white transition-colors hover:bg-[#c96a12] disabled:opacity-60"
           >
-            Sign in to {ROLES[role].viewName} view
+            {submitting ? 'Signing in…' : `Sign in to ${ROLES[role].viewName} view`}
             <span aria-hidden="true">→</span>
           </button>
         </form>
 
         <div className="mt-5 rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-3 py-2.5 text-[11px] text-neutral-600">
-          <p className="font-medium text-neutral-800">Demo login ({ROLES[role].label})</p>
+          <p className="flex items-center gap-1.5 font-medium text-neutral-800">
+            Demo login ({ROLES[role].label}) <MockDataBadge />
+          </p>
+          <p className="mt-1">Built-in account, used when the login API has no password for it.</p>
           <p className="mt-1">
             Email: <code className="text-neutral-900">{demo.email}</code>
           </p>
