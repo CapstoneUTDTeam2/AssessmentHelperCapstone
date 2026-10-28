@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
-import { getReports } from '../api/reports'
-import type { ReportRow, ReportStatus } from '../api/reports'
-import type { EvaluationCycle } from '../api/cycles'
+import { useMemo, useState } from 'react'
+import { CYCLE_START, REPORT_SUMMARY, REPORTS } from '../data/reportsMock'
+import type { ReportOutcome, ReportRow, ReportStatus } from '../data/reportsMock'
 import type { FacultyLevel } from '../data/facultyMock'
-import type { PageProps } from '../pageProps'
+import { MockDataNote } from '../components/MockData'
 import { downloadCsv } from '../utils/csv'
 
 const PAGE_SIZE = 12
@@ -20,40 +19,44 @@ const LEVEL_BADGES: Record<FacultyLevel, string> = {
   Lecturer: 'bg-[#c4561a]',
 }
 
+const OUTCOME_DOTS: Record<ReportOutcome, string> = {
+  'Exceeds expectations': 'bg-[#3f8a55]',
+  'Meets expectations': 'bg-[#1c4532]',
+  'Needs improvement': 'bg-[#e0791a]',
+}
+
 const STATUS_PILLS: Record<ReportStatus, string> = {
-  Scheduled: 'bg-[#1c4532]',
   'Awaiting sign-off': 'bg-[#e0791a]',
   'Signed off': 'bg-[#3f8a55]',
   'Report overdue': 'bg-[#b3261e]',
   'No report': 'bg-neutral-500',
 }
 
-type FilterKey = 'all' | 'scheduled' | 'awaiting' | 'signed' | 'overdue'
+type FilterKey = 'all' | 'awaiting' | 'signed' | 'overdue' | 'cycle'
 
 const FILTERS: { key: FilterKey; label: string; match: (r: ReportRow) => boolean }[] = [
   { key: 'all', label: 'All reports', match: () => true },
-  { key: 'scheduled', label: 'Scheduled', match: (r) => r.status === 'Scheduled' },
   { key: 'awaiting', label: 'Awaiting sign-off', match: (r) => r.status === 'Awaiting sign-off' },
   { key: 'signed', label: 'Signed off', match: (r) => r.status === 'Signed off' },
   { key: 'overdue', label: 'Report overdue', match: (r) => r.status === 'Report overdue' },
+  { key: 'cycle', label: 'This cycle', match: (r) => r.date !== null && r.date >= CYCLE_START },
 ]
 
-type SortKey = 'professor' | 'level' | 'date' | 'status'
+type SortKey = 'professor' | 'level' | 'date' | 'outcome' | 'status'
 type Sort = { key: SortKey; dir: 'asc' | 'desc' }
 
-/** Observations first, then faculty with no observer. */
+/** Filed reports first, then pending (overdue) ones, then faculty with nothing on file. */
 const DATE_RANK: Record<ReportStatus, number> = {
-  Scheduled: 0,
   'Awaiting sign-off': 0,
   'Signed off': 0,
-  'Report overdue': 0,
-  'No report': 1,
+  'Report overdue': 1,
+  'No report': 2,
 }
 
 function compare(a: ReportRow, b: ReportRow, { key, dir }: Sort) {
   const flip = dir === 'asc' ? 1 : -1
   if (key === 'date') {
-    // Rank stays fixed so missing reports always sit at the bottom.
+    // Rank stays fixed so pending and missing reports always sit at the bottom.
     return DATE_RANK[a.status] - DATE_RANK[b.status] || flip * (a.date ?? '').localeCompare(b.date ?? '')
   }
   return flip * (a[key] ?? '').localeCompare(b[key] ?? '')
@@ -68,9 +71,9 @@ const SORT_PRESETS: { label: string; sort: Sort }[] = [
 const COLUMNS: { label: string; sortKey?: SortKey }[] = [
   { label: 'Professor', sortKey: 'professor' },
   { label: 'Level', sortKey: 'level' },
-  { label: 'Observation' },
-  { label: 'Date', sortKey: 'date' },
-  { label: 'Signatures' },
+  { label: 'Most recent report' },
+  { label: 'Report date', sortKey: 'date' },
+  { label: 'Outcome', sortKey: 'outcome' },
   { label: 'Status', sortKey: 'status' },
 ]
 
@@ -81,68 +84,30 @@ function formatDate(date: string, withYear: boolean) {
   })
 }
 
-function signatures(row: ReportRow) {
-  if (row.observationId === null) return '—'
-  return `Observer ${row.observerSigned ? '✓' : '—'} · Observee ${row.observeeSigned ? '✓' : '—'}`
-}
-
-function exportReports(rows: ReportRow[], term: string) {
+function exportReports(rows: ReportRow[]) {
   downloadCsv(
-    `reports-${term.toLowerCase().replace(/\s+/g, '-') || 'cycle'}.csv`,
-    ['Professor', 'Level', 'Observation', 'Details', 'Date', 'Observer signed', 'Observee signed', 'Status'],
-    rows.map((r) => [
-      r.professor,
-      r.level,
-      r.reportType ?? '',
-      r.reportDetail,
-      r.date ?? '',
-      r.observerSigned ? 'Yes' : 'No',
-      r.observeeSigned ? 'Yes' : 'No',
-      r.status,
-    ]),
+    'reports-fall-2026.csv',
+    ['Professor', 'Level', 'Report', 'Details', 'Date', 'Outcome', 'Status'],
+    rows.map((r) => [r.professor, r.level, r.reportType ?? '', r.reportDetail, r.date ?? '', r.outcome ?? '', r.status]),
   )
 }
 
-function ReportsPage({ navigate }: PageProps) {
+function ReportsPage() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<FilterKey>('all')
   const [sort, setSort] = useState<Sort>(SORT_PRESETS[0].sort)
   const [page, setPage] = useState(1)
-  const [reports, setReports] = useState<ReportRow[]>([])
-  const [cycle, setCycle] = useState<EvaluationCycle | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    getReports(controller.signal)
-      .then((body) => {
-        setReports(body.rows)
-        setCycle(body.cycle)
-      })
-      .catch((err: unknown) => {
-        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Failed to load reports')
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
-      })
-    return () => controller.abort()
-  }, [])
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase()
     const match = FILTERS.find((f) => f.key === filter)!.match
-    return reports
-      .filter(
-        (r) =>
-          match(r) &&
-          (!q || [r.professor, r.reportDetail, r.reportType ?? ''].some((text) => text.toLowerCase().includes(q))),
-      )
-      .sort((a, b) => compare(a, b, sort))
-  }, [reports, search, filter, sort])
+    return REPORTS.filter(
+      (r) =>
+        match(r) &&
+        (!q || [r.professor, r.reportDetail].some((text) => text.toLowerCase().includes(q))),
+    ).sort((a, b) => compare(a, b, sort))
+  }, [search, filter, sort])
 
-  const term = cycle ? `${cycle.semester} ${cycle.year}` : ''
-  const count = (status: ReportStatus) => reports.filter((r) => r.status === status).length
   const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
   const current = Math.min(page, pageCount)
   const visible = rows.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE)
@@ -162,14 +127,14 @@ function ReportsPage({ navigate }: PageProps) {
         <div>
           <h1 className="text-xl font-semibold text-neutral-900">Reports</h1>
           <p className="mt-1 text-xs text-neutral-500">
-            {term || 'Current cycle'} · {count('Signed off')} signed off · {count('Awaiting sign-off')} awaiting
-            sign-off · {count('Report overdue')} reports overdue · {count('No report')} without an observer
+            {REPORT_SUMMARY.faculty} faculty · Fall 2026 · {REPORT_SUMMARY.onFile} reports on file ·{' '}
+            {REPORT_SUMMARY.awaitingSignOff} awaiting sign-off · {REPORT_SUMMARY.overdue} reports overdue
           </p>
-          {error && <p className="mt-1 text-[11px] text-[#b3261e]">{error}</p>}
+          <MockDataNote>Signed observation reports have no API yet.</MockDataNote>
         </div>
         <button
           type="button"
-          onClick={() => exportReports(rows, term)}
+          onClick={() => exportReports(rows)}
           className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 transition-colors hover:bg-neutral-50"
         >
           Export CSV
@@ -265,11 +230,7 @@ function ReportsPage({ navigate }: PageProps) {
             </thead>
             <tbody>
               {visible.map((row) => (
-                <tr
-                  key={row.id}
-                  onClick={row.observationId === null ? undefined : () => navigate('Observation Report', String(row.observationId))}
-                  className={`border-t border-neutral-100 ${row.observationId === null ? '' : 'cursor-pointer hover:bg-neutral-50'}`}
-                >
+                <tr key={row.id} className="border-t border-neutral-100">
                   <td className="px-3 py-2.5 pl-4">
                     <div className="flex items-center gap-2.5">
                       <span className={`h-7 w-7 shrink-0 rounded-full ${AVATAR_COLORS[row.avatar]}`} aria-hidden="true" />
@@ -285,7 +246,7 @@ function ReportsPage({ navigate }: PageProps) {
                   </td>
                   <td className="px-3 py-2.5">
                     <p className={row.reportType ? 'text-neutral-900' : 'text-neutral-500'}>
-                      {row.reportType ?? 'No observation'}
+                      {row.reportType ?? 'No report on file'}
                     </p>
                     <p className="text-[10px] text-neutral-500">{row.reportDetail}</p>
                   </td>
@@ -298,7 +259,18 @@ function ReportsPage({ navigate }: PageProps) {
                       <span className="text-neutral-900">{formatDate(row.date, true)}</span>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-[10px] whitespace-nowrap text-neutral-900">{signatures(row)}</td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    {row.outcome ? (
+                      <span className="flex items-center gap-1.5 text-[10px] text-neutral-900">
+                        <span className={`h-1.5 w-1.5 rounded-full ${OUTCOME_DOTS[row.outcome]}`} aria-hidden="true" />
+                        {row.outcome}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-neutral-500">
+                        {row.status === 'Report overdue' ? '— Pending report' : '—'}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2.5">
                     <span className={`rounded-full px-2.5 py-1 text-[10px] font-medium whitespace-nowrap text-white ${STATUS_PILLS[row.status]}`}>
                       {row.status}
@@ -309,7 +281,7 @@ function ReportsPage({ navigate }: PageProps) {
               {visible.length === 0 && (
                 <tr>
                   <td colSpan={COLUMNS.length} className="py-10 text-center text-neutral-500">
-                    {loading ? 'Loading reports…' : 'No reports match these filters.'}
+                    No reports match these filters.
                   </td>
                 </tr>
               )}

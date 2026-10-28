@@ -29,11 +29,6 @@ const STATUS_LABELS: Record<EvaluationStatus, string> = {
   Unknown: 'Unknown',
 }
 
-/** Professors.CurrentLevel ("Associate Professor") as the short label the tables use. */
-export function facultyLevel(currentLevel: string | null): FacultyLevel {
-  return LEVELS[currentLevel ?? ''] ?? 'Lecturer'
-}
-
 function formatDate(iso: string) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
 }
@@ -50,7 +45,7 @@ export function toFacultyMember(p: ProfessorEvaluationStatus): FacultyMember {
     id: p.professor_id,
     name: p.name,
     email: '',
-    level: facultyLevel(p.current_level),
+    level: LEVELS[p.current_level ?? ''] ?? 'Lecturer',
     courses: [],
     observationsReceived: null,
     status: STATUS_LABELS[p.status],

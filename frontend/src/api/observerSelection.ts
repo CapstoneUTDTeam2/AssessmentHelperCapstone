@@ -53,16 +53,10 @@ export interface ObserverSelectionResult {
 }
 
 export interface ObserveeNotification {
-  /** observer_list_ready once the committee sends the list; survey_open once it sends the survey notice. */
-  type: 'observer_list_ready' | 'survey_open'
   signup_id: number
   status: string
   message: string
   observers: ListedObserver[]
-  course_code?: string
-  section_name?: string
-  /** ISO survey deadline, on survey_open. */
-  due?: string
 }
 
 export function getObserverAlerts(signal?: AbortSignal) {

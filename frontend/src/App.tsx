@@ -33,7 +33,6 @@ const PAGES: Record<Role, Record<string, ComponentType<PageProps>>> = {
     Reports: ReportsPage,
     'Evaluation Criteria': EvaluationCriteriaPage,
     Settings: SettingsPage,
-    'Observation Report': ObservationReportPage,
   },
   faculty: {
     Dashboard: TeacherDashboardPage,
@@ -45,9 +44,8 @@ const PAGES: Record<Role, Record<string, ComponentType<PageProps>>> = {
 }
 
 // Pages opened from another page rather than the sidebar, and the sidebar item they belong under.
-const PARENT_PAGES: Record<Role, Record<string, string>> = {
-  coordinator: { 'Observation Report': 'Reports' },
-  faculty: { 'Observation Report': 'Evaluations' },
+const PARENT_PAGES: Record<string, string> = {
+  'Observation Report': 'Evaluations',
 }
 
 // Keeps the demo session across page refreshes (cleared when the tab closes).
@@ -119,7 +117,7 @@ function App() {
       <div className="flex min-h-screen bg-neutral-100 font-sans">
         <Sidebar
           user={user}
-          active={PARENT_PAGES[user.role][current] ?? current}
+          active={PARENT_PAGES[current] ?? current}
           onNavigate={(item) => handleNavigate(item)}
           onSignOut={handleSignOut}
         />
