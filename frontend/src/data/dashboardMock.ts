@@ -29,7 +29,7 @@ export const HIRE_LEVEL_COUNTS: { level: HireLevel; count: number }[] = [
   { level: 'Lecturer', count: 6 },
 ]
 
-export type EvaluationStatus = 'Overdue' | 'Report overdue' | 'Unmatched' | 'Pending' | 'Confirmed'
+export type EvaluationStatus = 'Overdue' | 'Report overdue' | 'Unmatched' | 'Pending' | 'Confirmed' | 'Completed'
 
 export interface EvaluationRow {
   id: number

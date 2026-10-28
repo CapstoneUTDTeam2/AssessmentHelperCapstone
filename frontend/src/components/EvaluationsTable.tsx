@@ -9,6 +9,7 @@ const STATUS_STYLES: Record<EvaluationStatus, string> = {
   Unmatched: 'bg-neutral-500',
   Pending: 'bg-[#e0791a]',
   Confirmed: 'bg-[#3f8a55]',
+  Completed: 'bg-[#1c4532]',
 }
 
 type FilterKey = 'all' | 'overdue' | 'unmatched' | 'awaiting' | 'week'
