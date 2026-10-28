@@ -96,11 +96,12 @@ export function deleteSection(sectionId: number, signal?: AbortSignal) {
 }
 
 export function addCriterion(templateId: number, fields: CriterionFields, signal?: AbortSignal) {
-  return apiPost<FullTemplate>(`/api/templates/${templateId}/criteria`, fields, undefined, signal)
+  return apiPost<TemplateCriterion>(`/api/templates/${templateId}/criteria`, fields, undefined, signal)
 }
 
+/** Fields left out stay the same. */
 export function updateCriterion(criterionId: number, fields: Partial<CriterionFields>, signal?: AbortSignal) {
-  return apiPut<FullTemplate>(`/api/criteria/${criterionId}`, fields, undefined, signal)
+  return apiPut<TemplateCriterion>(`/api/criteria/${criterionId}`, fields, undefined, signal)
 }
 
 /** Throws ApiError 409 if the criterion already has a rating; mark it inactive instead. */
