@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { getFaculty } from '../api/faculty'
+import { getProfessorObservations } from '../api/observations'
+import type { ProfessorObservations } from '../api/observations'
 import type { EligibleObserver } from '../api/signups'
-import { MockDataBadge, MockDataNote } from '../components/MockData'
-import { FACULTY } from '../data/facultyMock'
 import { downloadCsv } from '../utils/csv'
 import type { CurrentTerm } from '../api/evaluationStatus'
 import { LEVEL_COLORS } from '../theme'
@@ -340,13 +340,23 @@ function FacultyPage() {
 }
 
 function FacultyDetailsPanel({ member }: { member: FacultyMember }) {
-  const mockDetails = FACULTY.find((row) => row.id === member.id)?.details
   const { details } = member
-  const past = details.past.length > 0 ? details.past : mockDetails?.past ?? []
-  const upcoming = details.upcoming.length > 0 ? details.upcoming : mockDetails?.upcoming ?? []
-  const pastIsMock = details.past.length === 0 && past.length > 0
   const { fetchObserveeSignup } = useObserverMatching()
   const [observers, setObservers] = useState<EligibleObserver[] | null>(null)
+  const [history, setHistory] = useState<ProfessorObservations | null>(null)
+  const [historyError, setHistoryError] = useState(false)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    getProfessorObservations(member.id, controller.signal)
+      .then(setHistory)
+      .catch(() => {
+        if (!controller.signal.aborted) setHistoryError(true)
+      })
+    return () => controller.abort()
+  }, [member.id])
+
+  const { past, upcoming } = evaluationEvents(history, details.nextEvaluation)
 
   // Observers come from this member's be-observed sign-up this cycle; no sign-up (404) means none.
   useEffect(() => {
@@ -362,11 +372,9 @@ function FacultyDetailsPanel({ member }: { member: FacultyMember }) {
   return (
     <div className="grid gap-3 lg:grid-cols-[1.25fr_0.85fr_1fr]">
       <section className="rounded-lg border border-neutral-200 bg-white p-3">
-        <h3 className="flex items-center gap-1.5 text-xs font-semibold text-neutral-900">
-          Evaluations
-          {pastIsMock && <MockDataBadge />}
-        </h3>
-        {pastIsMock && <MockDataNote>Observation history has no API yet.</MockDataNote>}
+        <h3 className="text-xs font-semibold text-neutral-900">Evaluations</h3>
+        {historyError && <p className="mt-1 text-[10px] text-[#b3261e]">Couldn’t load observations.</p>}
+        {!history && !historyError && <p className="mt-1 text-[10px] text-neutral-400">Loading observations…</p>}
         <EventList title="Past" events={past} />
         <EventList title="Upcoming" events={upcoming} />
       </section>
@@ -402,6 +410,31 @@ function FacultyDetailsPanel({ member }: { member: FacultyMember }) {
       </section>
     </div>
   )
+}
+
+function eventDate(iso: string) {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: '2-digit', year: 'numeric' })
+}
+
+/** Observations this professor received and gave, split around today, plus the next formal evaluation. */
+function evaluationEvents(history: ProfessorObservations | null, nextEvaluation: string) {
+  const today = new Date().toISOString().slice(0, 10)
+  const rows = [
+    ...(history?.received ?? []).map((o) => ({ o, kind: 'Observed' as const, title: `Observed by ${o.observer_name} · ${o.course_code}` })),
+    ...(history?.given ?? []).map((o) => ({ o, kind: 'Observing' as const, title: `Observing ${o.observee_name} · ${o.course_code}` })),
+  ].sort((a, b) => (a.o.observation_date ?? '').localeCompare(b.o.observation_date ?? ''))
+  const toEvent = ({ o, kind, title }: (typeof rows)[number]): EvaluationEvent => ({
+    date: o.observation_date ? eventDate(o.observation_date) : '—',
+    title,
+    subtitle: o.locked ? 'Signed by both' : o.observer_signed || o.observee_signed ? 'Awaiting a signature' : o.status,
+    kind,
+  })
+  const isPast = ({ o }: (typeof rows)[number]) => o.locked || (o.observation_date ?? '') < today
+  const upcoming = rows.filter((r) => !isPast(r)).map(toEvent)
+  if (nextEvaluation && nextEvaluation !== '—') {
+    upcoming.push({ date: nextEvaluation, title: 'Formal evaluation due', subtitle: 'From the evaluation cycle', kind: 'Evaluation' })
+  }
+  return { past: rows.filter(isPast).map(toEvent), upcoming }
 }
 
 function EventList({ title, events }: { title: string; events: EvaluationEvent[] }) {

@@ -39,7 +39,7 @@ export function apiGet<T>(path: string, query?: Query, signal?: AbortSignal): Pr
   return request<T>(withQuery(path, query), { signal, headers: { Accept: 'application/json' } })
 }
 
-function apiSend<T>(method: 'POST' | 'PUT', path: string, body?: unknown, query?: Query, signal?: AbortSignal): Promise<T> {
+function apiSend<T>(method: 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown, query?: Query, signal?: AbortSignal): Promise<T> {
   return request<T>(withQuery(path, query), {
     method,
     signal,
@@ -54,4 +54,8 @@ export function apiPost<T>(path: string, body?: unknown, query?: Query, signal?:
 
 export function apiPut<T>(path: string, body?: unknown, query?: Query, signal?: AbortSignal): Promise<T> {
   return apiSend<T>('PUT', path, body, query, signal)
+}
+
+export function apiDelete<T>(path: string, query?: Query, signal?: AbortSignal): Promise<T> {
+  return apiSend<T>('DELETE', path, undefined, query, signal)
 }

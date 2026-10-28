@@ -8,6 +8,8 @@ export interface SettingsSection {
   title: string
   description: string
   content: ReactNode
+  /** Overrides the "N settings" count, for a section whose content renders its own rows. */
+  settingsCount?: number
 }
 
 interface SettingsLayoutProps {
@@ -115,7 +117,7 @@ export function SettingsLayout({
 
         <div className="flex w-full min-w-0 flex-col gap-4">
           {sections.map((s) => {
-            const count = Children.toArray(s.content).filter((c) => !isNotice(c)).length
+            const count = s.settingsCount ?? Children.toArray(s.content).filter((c) => !isNotice(c)).length
             const expanded = isOpen(s.id)
             const heading = (
               <>

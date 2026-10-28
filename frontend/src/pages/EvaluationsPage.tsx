@@ -1,19 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { getCommitteeOverview, hireLevel } from '../api/committee'
+import { committeeKpis, getCommitteeOverview, hireLevel } from '../api/committee'
 import type { CommitteeOverview } from '../api/committee'
 import EvaluationsCard from '../components/EvaluationsTable'
-import { MockDataBadge, MockDataNote } from '../components/MockData'
-import type { HireLevel, Kpi } from '../data/dashboardMock'
-import { KPIS } from '../data/dashboardMock'
-import {
-  CYCLE_COMPLETION,
-  ELIGIBILITY,
-  OBSERVER_WORKLOAD,
-} from '../data/evaluationsMock'
+import type { EvaluationStatus, HireLevel } from '../data/dashboardMock'
 import { KPI_ACCENTS } from '../theme'
-
-type DisplayKpi = Kpi & { mock?: boolean }
 
 function EvaluationsPage() {
   const [data, setData] = useState<CommitteeOverview | null>(null)
@@ -34,39 +25,7 @@ function EvaluationsPage() {
   const due = data?.due.length ?? 0
   const overdue = data?.overdue.length ?? 0
   const unmatched = data?.noMatchCount ?? 0
-  const signedUp = data?.signups?.signup_count
-  const matches = data?.signups?.signups.reduce((sum, s) => sum + s.observers.length, 0)
-  const kpis: DisplayKpi[] = [
-    {
-      label: 'Overdue Evaluations',
-      detail: 'KPI 1.2',
-      value: String(overdue),
-      accent: overdue > 0 ? 'red' : 'green',
-    },
-    {
-      label: 'Participation Rate',
-      detail: signedUp === undefined ? 'KPI 2.1 · unavailable' : `KPI 2.1 · ${signedUp} / ${due} due`,
-      value: due === 0 || signedUp === undefined ? '—' : `${Math.round((signedUp / due) * 100)}%`,
-      accent: 'black',
-    },
-    {
-      label: 'List sufficiency',
-      detail: matches === undefined ? 'KPI 3a · unavailable' : `KPI 3a · ${matches} matches / ${signedUp} sign-ups`,
-      value: signedUp && signedUp > 0 && matches !== undefined ? (matches / signedUp).toFixed(1) : '—',
-      accent: 'green',
-    },
-    {
-      label: 'Unmatched faculty',
-      detail: 'No eligible observers',
-      value: String(unmatched),
-      accent: unmatched > 0 ? 'orange' : 'green',
-    },
-    {
-      ...KPIS[0],
-      mock: true,
-      detail: 'KPI 1a · mock · no generator yet',
-    },
-  ]
+  const kpis = committeeKpis(data)
 
   return (
     <main className="min-w-0 flex-1 px-6 py-7">
@@ -80,14 +39,11 @@ function EvaluationsPage() {
       </header>
       {error && <p className="mt-3 text-[11px] text-[#b3261e]">{error}</p>}
 
-      <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+      <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
         {kpis.map((kpi) => (
           <section key={kpi.label} className="rounded-lg border border-neutral-200 bg-white px-3.5 py-3.5">
             <span className={`block h-0.5 w-5 rounded ${KPI_ACCENTS[kpi.accent]}`} aria-hidden="true" />
-            <h2 className="mt-2.5 flex items-center gap-1.5 text-[11px] text-neutral-600">
-              {kpi.label}
-              {kpi.mock && <MockDataBadge />}
-            </h2>
+            <h2 className="mt-2.5 text-[11px] text-neutral-600">{kpi.label}</h2>
             <p className="mt-1 text-2xl font-semibold text-[#1c4532]">{kpi.value}</p>
             <p className="mt-1 text-[10px] text-neutral-700">{kpi.detail}</p>
           </section>
@@ -102,13 +58,24 @@ function EvaluationsPage() {
   )
 }
 
+const COMPLETION: { label: string; statuses: EvaluationStatus[] }[] = [
+  { label: 'Completed', statuses: ['Completed'] },
+  { label: 'Scheduled', statuses: ['Confirmed'] },
+  { label: 'Report overdue', statuses: ['Report overdue'] },
+  { label: 'No observer yet', statuses: ['Pending', 'Overdue'] },
+  { label: 'Unmatched', statuses: ['Unmatched'] },
+]
+
 function StatisticsCard({ data }: { data: CommitteeOverview | null }) {
-  const dueByLevel = countsByHireLevel(data?.due ?? [])
+  const dueByLevel = countsByHireLevel(data)
+  const rows = data?.rows ?? []
+  const accuracy = data?.kpis?.evaluation_eligibility_accuracy
+  const workload = observerWorkload(data)
 
   return (
     <section className="min-w-0 rounded-lg border border-neutral-200 bg-white p-4">
       <h2 className="text-sm font-semibold text-neutral-900">Evaluation Statistics</h2>
-      <p className="mt-0.5 text-[10px] text-neutral-500">Hire-level due counts from the API. Other charts are placeholders.</p>
+      <p className="mt-0.5 text-[10px] text-neutral-500">This cycle, from the KPI, executive dashboard and observations APIs.</p>
 
       <StatSection title="Faculty due by hire level" meta="Executive dashboard">
         <ul className="space-y-2">
@@ -131,44 +98,73 @@ function StatisticsCard({ data }: { data: CommitteeOverview | null }) {
         </ul>
       </StatSection>
 
-      <StatSection title="Cycle completion" meta="Mock data">
-        <MockDataNote>No completion API yet.</MockDataNote>
-        <ul className="mt-2 space-y-1 text-[10px] text-neutral-600">
-          {CYCLE_COMPLETION.map((row) => (
-            <li key={row.segment} className="flex justify-between">
-              <span>{row.segment}</span>
-              <span>{row.count}</span>
+      <StatSection title="Cycle completion" meta="Due and overdue faculty">
+        <ul className="space-y-1 text-[10px] text-neutral-600">
+          {COMPLETION.map((segment) => (
+            <li key={segment.label} className="flex justify-between">
+              <span>{segment.label}</span>
+              <span>{rows.filter((r) => segment.statuses.includes(r.status)).length}</span>
             </li>
           ))}
         </ul>
       </StatSection>
 
-      <StatSection title="Eligibility accuracy" meta="Mock data">
-        <MockDataNote>KPI 1a is not generated yet.</MockDataNote>
-        <p className="mt-1 text-[11px] text-neutral-700">
-          {ELIGIBILITY.correct} correct · {ELIGIBILITY.flaggedEarly} flagged · {ELIGIBILITY.missed} missed
-        </p>
+      <StatSection title="Eligibility accuracy" meta="KPI 1.1">
+        {accuracy ? (
+          <>
+            <p className="text-[11px] text-neutral-700">
+              {accuracy.correct_matches} of {accuracy.total_matches} saved matches correct
+            </p>
+            <ul className="mt-1 space-y-1 text-[10px] text-[#b3261e]">
+              {accuracy.incorrect.map((m) => (
+                <li key={`${m.signup_id}-${m.observer_id}`}>
+                  Signup {m.signup_id}, observer {m.observer_id}: {m.reasons.join(', ')}
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <p className="text-[11px] text-neutral-500">Unavailable</p>
+        )}
       </StatSection>
 
-      <StatSection title="Observer workload" meta="Mock data">
-        <MockDataNote>No assignment-count API yet.</MockDataNote>
-        <ul className="mt-2 space-y-1 text-[10px] text-neutral-600">
-          {OBSERVER_WORKLOAD.map((row) => (
+      <StatSection title="Observer workload" meta="Observations per observer">
+        <ul className="space-y-1 text-[10px] text-neutral-600">
+          {workload.map((row) => (
             <li key={row.assigned} className="flex justify-between">
               <span>{row.assigned} assigned</span>
-              <span>{row.observers} observers</span>
+              <span>
+                {row.observers} observer{row.observers === 1 ? '' : 's'}
+              </span>
             </li>
           ))}
+          {workload.length === 0 && <li>No observations scheduled yet.</li>}
         </ul>
       </StatSection>
     </section>
   )
 }
 
-function countsByHireLevel(professors: CommitteeOverview['due']) {
+function countsByHireLevel(data: CommitteeOverview | null) {
   const counts: Record<HireLevel, number> = { Assistant: 0, Associate: 0, Full: 0, Lecturer: 0 }
-  for (const professor of professors) counts[hireLevel(professor.current_level)] += 1
+  if (data?.executive) {
+    for (const [level, n] of Object.entries(data.executive.faculty_due_by_hire_level)) counts[hireLevel(level)] += n
+  } else {
+    for (const professor of data?.due ?? []) counts[hireLevel(professor.current_level)] += 1
+  }
   return (Object.entries(counts) as [HireLevel, number][]).map(([level, count]) => ({ level, count }))
+}
+
+/** How many observers have 1, 2, 3 or 4+ observations this cycle. */
+function observerWorkload(data: CommitteeOverview | null) {
+  const perObserver = new Map<number, number>()
+  for (const o of data?.observations ?? []) perObserver.set(o.observer_id, (perObserver.get(o.observer_id) ?? 0) + 1)
+  const buckets = new Map<string, number>()
+  for (const n of perObserver.values()) {
+    const key = n >= 4 ? '4+' : String(n)
+    buckets.set(key, (buckets.get(key) ?? 0) + 1)
+  }
+  return ['1', '2', '3', '4+'].filter((k) => buckets.has(k)).map((assigned) => ({ assigned, observers: buckets.get(assigned)! }))
 }
 
 function StatSection({ title, meta, children }: { title: string; meta: string; children: ReactNode }) {
