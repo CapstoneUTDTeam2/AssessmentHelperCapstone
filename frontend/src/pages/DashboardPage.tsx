@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
-import { getCommitteeOverview, hireLevel, notifyObservees, startObserverSelection } from '../api/committee'
+import { committeeKpis, getCommitteeOverview, hireLevel, notifyObservees, startObserverSelection } from '../api/committee'
 import type { CommitteeOverview } from '../api/committee'
 import { ApiError } from '../api/client'
-import { formatPercent } from '../api/kpis'
 import type { UnmatchedFaculty } from '../api/kpis'
 import type { ObserverAlert, SelectionSignup } from '../api/observerSelection'
 import { notifySurvey } from '../api/surveys'
 import EvaluationsCard from '../components/EvaluationsTable'
-import type { HireLevel, Kpi } from '../data/dashboardMock'
+import type { HireLevel } from '../data/dashboardMock'
 import { KPI_ACCENTS } from '../theme'
 
 // Phases (GET /api/evaluation-cycles/current) after the observation deadline, when the survey notice can go out.
@@ -86,7 +85,7 @@ function DashboardPage() {
 
   const term = data?.cycle ? `${data.cycle.semester} ${data.cycle.year}` : '—'
   const levelRows = countsByHireLevel(data)
-  const kpis = processKpis(data)
+  const kpis = committeeKpis(data)
   const surveyOpen = SURVEY_PHASES.includes(data?.cycle?.phase ?? '')
 
   return (
@@ -176,90 +175,6 @@ function toSelectionSignup(match: NonNullable<CommitteeOverview['signups']>['sig
     observers: match.observers,
     eligible_count: match.eligible_count,
   } satisfies SelectionSignup
-}
-
-function processKpis(data: CommitteeOverview | null): Kpi[] {
-  const k = data?.kpis
-  if (!k) return fallbackKpis(data)
-  const accuracy = k.evaluation_eligibility_accuracy
-  const participation = k.assessment_participation_rate
-  const utilization = k.observer_utilization_rate
-  const sufficiency = k.list_sufficiency_rate
-  const missing = k.missing_observation_count
-  const survey = k.survey_completion_rate
-  return [
-    {
-      label: 'Eligibility Accuracy',
-      detail: `KPI 1.1 · ${accuracy.correct_matches} of ${accuracy.total_matches} matches correct`,
-      value: formatPercent(accuracy.percent),
-      accent: accuracy.incorrect.length > 0 ? 'red' : 'green',
-      detailPositive: accuracy.total_matches > 0 && accuracy.incorrect.length === 0,
-    },
-    {
-      label: 'Overdue Evaluations',
-      detail: 'KPI 1.2 · overdue this cycle',
-      value: String(k.overdue_evaluation_count.count),
-      accent: k.overdue_evaluation_count.count > 0 ? 'red' : 'green',
-    },
-    {
-      label: 'Participation Rate',
-      detail: `KPI 2.1 · ${participation.signed_up} signed up / ${participation.due} due`,
-      value: formatPercent(participation.percent),
-      accent: 'black',
-      detailPositive: (participation.percent ?? 0) >= 75,
-    },
-    {
-      label: 'Observer Utilization',
-      detail: `KPI 2.2 · ${utilization.observers} observers / ${utilization.signed_up} signed up`,
-      value: formatPercent(utilization.percent),
-      accent: 'orange',
-    },
-    {
-      label: 'List Sufficiency',
-      detail: `KPI 3.1 · ${sufficiency.saved_matches} matches / ${sufficiency.signups} sign-ups`,
-      value: sufficiency.average_list_size === null ? '—' : sufficiency.average_list_size.toFixed(1),
-      accent: 'green',
-    },
-    {
-      label: 'Missing Observations',
-      detail: 'KPI 4.1 · approved but did not happen',
-      value: String(missing.count),
-      accent: missing.count > 0 ? 'red' : 'green',
-    },
-    {
-      label: 'Survey Completion',
-      detail: `KPI 4.2 · ${survey.completed_full_process} full process / ${survey.signups} sign-ups`,
-      value: formatPercent(survey.percent),
-      accent: 'black',
-    },
-  ]
-}
-
-/** Live counts from the other endpoints when GET /api/kpis is unavailable. */
-function fallbackKpis(data: CommitteeOverview | null): Kpi[] {
-  const due = data?.due.length ?? 0
-  const overdue = data?.overdue.length ?? 0
-  const signedUp = data?.signups?.signup_count
-  return [
-    {
-      label: 'Overdue Evaluations',
-      detail: 'KPI 1.2 · from evaluation-status',
-      value: String(overdue),
-      accent: overdue > 0 ? 'red' : 'green',
-    },
-    {
-      label: 'Participation Rate',
-      detail: signedUp === undefined ? 'KPI 2.1 · unavailable' : `KPI 2.1 · ${signedUp} signed up / ${due} due`,
-      value: due === 0 || signedUp === undefined ? '—' : `${Math.round((signedUp / due) * 100)}%`,
-      accent: 'black',
-    },
-    {
-      label: 'Unmatched faculty',
-      detail: 'No eligible observers · AC alert',
-      value: String(data?.noMatchCount ?? 0),
-      accent: (data?.noMatchCount ?? 0) > 0 ? 'orange' : 'green',
-    },
-  ]
 }
 
 type LevelRow = { level: HireLevel; due: number; overdue: number; outstanding: number }
