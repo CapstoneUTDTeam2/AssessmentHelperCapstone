@@ -11,6 +11,8 @@ export interface User {
   role: Role
   /** Professors.ProfessorID the session loads. Demo coordinator sessions omit this. */
   professorId?: number
+  /** Department name from the login API; demo sessions omit it. */
+  department?: string
   /** True when signed in with a hard-coded demo account instead of the auth API. */
   demo?: boolean
 }

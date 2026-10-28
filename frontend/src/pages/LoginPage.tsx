@@ -106,6 +106,7 @@ function LoginPage({ onLogin }: LoginPageProps) {
         title: role === 'coordinator' ? 'Assessment Committee' : (professor.current_level ?? 'Faculty'),
         role,
         professorId: professor.professor_id,
+        department: professor.department_name,
       })
     } catch (err) {
       const rejected = err instanceof ApiError && err.status < 500
