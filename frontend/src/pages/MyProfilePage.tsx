@@ -2,31 +2,18 @@ import { useEffect, useState } from 'react'
 import { getObserveeClasses, getTeachingHistory } from '../api/classes'
 import type { ObserveeClass } from '../api/classes'
 import { getProfessorEvaluationStatus } from '../api/evaluationStatus'
-import { getProfessorObservations } from '../api/observations'
-import type { ProfessorObservation } from '../api/observations'
-import { DEMO_PROFESSOR_ID, loggedInProfessorId, loggedInUser } from '../auth/session'
+import { DEMO_PROFESSOR_ID, loggedInProfessorId } from '../auth/session'
 import SortHeader from '../components/SortHeader'
+import { MockDataBadge, MockDataNote } from '../components/MockData'
+import { EVALUATION_HISTORY, PROFILE_DETAILS, TEACHER_PROFILE, UPCOMING } from '../data/teacherMock'
+import type { CurrentCourse, EvaluationOutcome, PastEvaluation, TeachingTerm } from '../data/teacherMock'
 import { useSortedRows } from '../hooks/useSortedRows'
 import type { Comparators } from '../hooks/useSortedRows'
 
-interface CurrentCourse {
-  sectionId: number
-  course: string
-  title: string
-  section: string
-  days: string
-  start: string
-  end: string
-  /** The observation of this section this cycle, if one is scheduled or done. */
-  observation: ProfessorObservation | undefined
-}
-
-interface TeachingTerm {
-  semester: string
-  /** Sortable key, e.g. "2026-1" for Spring 2026, "2025-3" for Fall 2025. */
-  order: string
-  courses: string[]
-  sections: number
+const OUTCOME_PILLS: Record<EvaluationOutcome, string> = {
+  'Exceeds expectations': 'bg-[#1c4532]',
+  'Meets expectations': 'bg-[#3f8a55]',
+  'Needs improvement': 'bg-[#e0791a]',
 }
 
 /** Rows in the profile card that are drawn in the accent color. */
@@ -36,15 +23,20 @@ function formatDay(iso: string) {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' })
 }
 
-function formatDate(iso: string) {
-  return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' })
+function formatMonth(yearMonth: string) {
+  return new Date(`${yearMonth}-01T00:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', year: 'numeric' })
+}
+
+/** Observation appointments are not on the API yet (observer-request stubs). */
+function observationOf(c: CurrentCourse): { date: string } | undefined {
+  return UPCOMING.find((u) => u.kind === 'Being observed' && u.course.startsWith(c.course) && u.start === c.start)
 }
 
 const COURSE_COMPARATORS: Comparators<CurrentCourse, 'course' | 'section' | 'time' | 'evaluation'> = {
   course: (a, b) => a.course.localeCompare(b.course) || a.section.localeCompare(b.section),
   section: (a, b) => a.section.localeCompare(b.section),
   time: (a, b) => a.days.localeCompare(b.days) || a.start.localeCompare(b.start),
-  evaluation: (a, b) => (a.observation?.observation_date ?? '9999').localeCompare(b.observation?.observation_date ?? '9999'),
+  evaluation: (a, b) => (observationOf(a)?.date ?? '9999').localeCompare(observationOf(b)?.date ?? '9999'),
 }
 
 const TERM_COMPARATORS: Comparators<TeachingTerm, 'semester' | 'courses'> = {
@@ -52,62 +44,48 @@ const TERM_COMPARATORS: Comparators<TeachingTerm, 'semester' | 'courses'> = {
   courses: (a, b) => a.courses.join().localeCompare(b.courses.join()),
 }
 
-const EVALUATION_COMPARATORS: Comparators<ProfessorObservation, 'date' | 'status'> = {
-  date: (a, b) => (a.observation_date ?? '').localeCompare(b.observation_date ?? ''),
-  status: (a, b) => a.status.localeCompare(b.status),
+const EVALUATION_COMPARATORS: Comparators<PastEvaluation, 'date' | 'outcome'> = {
+  date: (a, b) => a.date.localeCompare(b.date),
+  outcome: (a, b) => a.outcome.localeCompare(b.outcome),
 }
 
-function toCurrentCourse(row: ObserveeClass, received: ProfessorObservation[]): CurrentCourse {
+function toCurrentCourse(row: ObserveeClass): CurrentCourse {
   return {
-    sectionId: row.section_id,
     course: row.course_code,
     title: row.course_name,
     section: row.section_name,
     days: row.meeting_days,
     start: row.start_time,
     end: row.end_time,
-    observation: received.find((o) => o.section_id === row.section_id),
+    room: '—',
+    enrolled: 0,
+    capacity: 0,
   }
 }
 
-interface Profile {
-  name: string
-  cycle: string
-  nextEvaluation: string
-  hireLevel: string
-  lastEvaluation: string
-}
-
 function MyProfilePage() {
-  const user = loggedInUser()
-  const professorId = loggedInProfessorId() ?? DEMO_PROFESSOR_ID
   const [courses, setCourses] = useState<CurrentCourse[]>([])
   const [history, setHistory] = useState<TeachingTerm[]>([])
-  const [received, setReceived] = useState<ProfessorObservation[]>([])
-  const [termLabel, setTermLabel] = useState('—')
-  const [error, setError] = useState<string | null>(null)
-  const [profile, setProfile] = useState<Profile>({
-    name: user?.name ?? '—',
-    cycle: '—',
-    nextEvaluation: '—',
-    hireLevel: '—',
-    lastEvaluation: '—',
-  })
+  const [termLabel, setTermLabel] = useState('Fall 2026')
+  const [profileName, setProfileName] = useState(TEACHER_PROFILE.name)
+  const [cycle, setCycle] = useState(TEACHER_PROFILE.evaluationCycle)
+  const [nextEvaluation, setNextEvaluation] = useState(TEACHER_PROFILE.nextEvaluation)
+  const [hireLevel, setHireLevel] = useState(TEACHER_PROFILE.rank)
+  const [lastEvaluation, setLastEvaluation] = useState(
+    PROFILE_DETAILS.appointment.find(([label]) => label === 'Last evaluation')?.[1] ?? '—',
+  )
 
   useEffect(() => {
     const controller = new AbortController()
-    const { signal } = controller
     Promise.all([
-      getObserveeClasses(professorId, signal),
-      getTeachingHistory(professorId, signal),
-      getProfessorEvaluationStatus(professorId, signal).catch(() => null),
-      getProfessorObservations(professorId, signal).catch(() => null),
+      getObserveeClasses(loggedInProfessorId() ?? DEMO_PROFESSOR_ID, controller.signal),
+      getTeachingHistory(loggedInProfessorId() ?? DEMO_PROFESSOR_ID, controller.signal),
+      getProfessorEvaluationStatus(loggedInProfessorId() ?? DEMO_PROFESSOR_ID, controller.signal).catch(() => null),
     ])
-      .then(([classes, teaching, status, observations]) => {
-        const receivedObservations = observations?.received ?? []
-        setReceived(receivedObservations)
-        setCourses(classes.classes.map((row) => toCurrentCourse(row, receivedObservations)))
+      .then(([classes, teaching, status]) => {
+        setCourses(classes.classes.map(toCurrentCourse))
         setTermLabel(`${classes.semester} ${classes.year}`)
+        setProfileName(classes.professor_name)
         setHistory(
           teaching.terms.map((term) => ({
             semester: `${term.semester} ${term.year}`,
@@ -116,29 +94,26 @@ function MyProfilePage() {
             sections: term.sections,
           })),
         )
-        setProfile((p) => ({
-          ...p,
-          name: classes.professor_name,
-          ...(status && {
-            cycle:
-              status.frequency_years === 1
-                ? 'Every year'
-                : status.frequency_years
-                  ? `Every ${status.frequency_years} years`
-                  : '—',
-            nextEvaluation: status.next_due_year ? `${status.next_due_semester ?? ''} ${status.next_due_year}`.trim() : '—',
-            hireLevel: status.current_level ?? '—',
-            lastEvaluation: status.last_evaluation_date ? formatDate(status.last_evaluation_date) : 'Never',
-          }),
-        }))
+        if (status) {
+          setCycle(
+            status.frequency_years === 1
+              ? 'Every year'
+              : status.frequency_years
+                ? `Every ${status.frequency_years} years`
+                : '—',
+          )
+          setNextEvaluation(
+            status.next_due_year ? `${status.next_due_semester ?? ''} ${status.next_due_year}`.trim() : '—',
+          )
+          setHireLevel(status.current_level ?? '—')
+          setLastEvaluation(status.last_evaluation_date ? formatDay(status.last_evaluation_date) : 'Never')
+        }
       })
-      .catch((err: unknown) => {
-        if (!signal.aborted) setError(err instanceof Error ? err.message : 'Failed to load your profile')
+      .catch(() => {
+        /* keep mock profile fields; course tables stay empty */
       })
     return () => controller.abort()
-  }, [professorId])
-
-  const thisCycle = received.filter((o) => `${o.semester} ${o.year}` === termLabel).length
+  }, [])
 
   return (
     <main className="min-w-0 flex-1 px-6 py-7">
@@ -148,17 +123,22 @@ function MyProfilePage() {
           <p className="mt-1 text-xs text-neutral-500">
             Your appointment, courses, and evaluation record as seen by the Evaluation Committee
           </p>
-          {error && <p className="mt-1 text-[11px] text-[#b3261e]">{error}</p>}
         </div>
       </header>
 
       <div className="mt-5 grid items-start gap-4 xl:grid-cols-[276px_1fr]">
-        <ProfileCard profile={profile} department={user?.department ?? null} observationsThisCycle={thisCycle} />
+        <ProfileCard
+          name={profileName}
+          cycle={cycle}
+          nextEvaluation={nextEvaluation}
+          hireLevel={hireLevel}
+          lastEvaluation={lastEvaluation}
+        />
         <div className="flex min-w-0 flex-col gap-4">
           <CurrentCoursesCard courses={courses} termLabel={termLabel} />
           <div className="grid items-start gap-4 lg:grid-cols-2">
             <TeachingHistoryCard history={history} />
-            <EvaluationHistoryCard received={received} nextEvaluation={profile.nextEvaluation} />
+            <EvaluationHistoryCard nextEvaluation={nextEvaluation} />
           </div>
         </div>
       </div>
@@ -167,44 +147,56 @@ function MyProfilePage() {
 }
 
 function ProfileCard({
-  profile,
-  department,
-  observationsThisCycle,
+  name,
+  cycle,
+  nextEvaluation,
+  hireLevel,
+  lastEvaluation,
 }: {
-  profile: Profile
-  department: string | null
-  observationsThisCycle: number
+  name: string
+  cycle: string
+  nextEvaluation: string
+  hireLevel: string
+  lastEvaluation: string
 }) {
   return (
     <section className="rounded-lg border border-neutral-200 bg-white p-4">
       <div className="flex items-start gap-3.5">
         <span className="h-14 w-14 shrink-0 rounded-full bg-[#c4561a]" aria-hidden="true" />
         <div className="min-w-0">
-          <h2 className="text-base font-semibold text-neutral-900">{profile.name}</h2>
-          <p className="text-[11px] text-neutral-500">{[profile.hireLevel, department].filter(Boolean).join(' · ')}</p>
+          <h2 className="text-base font-semibold text-neutral-900">{name}</h2>
+          <p className="text-[11px] text-neutral-500">{hireLevel} · Computer Science</p>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
-            <span className="rounded-full bg-[#1c4532] px-2.5 py-0.5 text-[10px] font-medium text-white">{profile.hireLevel}</span>
+            <span className="rounded-full bg-[#1c4532] px-2.5 py-0.5 text-[10px] font-medium text-white">{hireLevel}</span>
+            <span className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-[10px] text-neutral-700">Observer-eligible</span>
           </div>
         </div>
       </div>
       <DetailList
         title="Appointment & Evaluation"
-        rows={[
-          ['Hire level', profile.hireLevel],
-          ['Evaluation cycle', profile.cycle],
-          ['Last evaluation', profile.lastEvaluation],
-          ['Next evaluation', profile.nextEvaluation],
-          ['Observations this cycle', `${observationsThisCycle} received`],
-        ]}
+        rows={PROFILE_DETAILS.appointment.map(([label, value]) =>
+          label === 'Evaluation cycle'
+            ? [label, cycle]
+            : label === 'Next evaluation'
+              ? [label, nextEvaluation]
+              : label === 'Rank'
+                ? [label, hireLevel]
+                : label === 'Last evaluation'
+                  ? [label, lastEvaluation]
+                  : [label, value],
+        )}
       />
     </section>
   )
 }
 
-function DetailList({ title, rows }: { title: string; rows: [string, string][] }) {
+function DetailList({ title, rows, mock }: { title: string; rows: [string, string][]; mock?: boolean }) {
   return (
     <div className="mt-4">
-      <h3 className="text-[9px] font-semibold tracking-wide text-neutral-500 uppercase">{title}</h3>
+      <h3 className="flex items-center gap-1.5 text-[9px] font-semibold tracking-wide text-neutral-500 uppercase">
+        {title}
+        {mock && <MockDataBadge />}
+      </h3>
       <dl className="mt-1.5">
         {rows.map(([label, value]) => (
           <div key={label} className="flex justify-between gap-3 border-b border-neutral-100 py-1.5 text-[10px]">
@@ -229,6 +221,7 @@ function CurrentCoursesCard({ courses, termLabel }: { courses: CurrentCourse[]; 
           <p className="mt-0.5 text-[10px] text-neutral-500">
             {courseCount} courses · {courses.length} sections · from TeachingAssignment
           </p>
+          <MockDataNote>Evaluation dates in this table are placeholders. Sections have no room or enrollment columns.</MockDataNote>
         </div>
       </div>
 
@@ -244,9 +237,9 @@ function CurrentCoursesCard({ courses, termLabel }: { courses: CurrentCourse[]; 
           </thead>
           <tbody>
             {sorted.map((c) => {
-              const observation = c.observation
+              const observation = observationOf(c)
               return (
-                <tr key={c.sectionId} className="border-b border-neutral-100">
+                <tr key={`${c.course}-${c.section}`} className="border-b border-neutral-100">
                   <td className="max-w-44 px-2 py-2 text-neutral-900">
                     {c.course} · {c.title}
                   </td>
@@ -255,9 +248,9 @@ function CurrentCoursesCard({ courses, termLabel }: { courses: CurrentCourse[]; 
                     {c.days} {c.start}–{c.end}
                   </td>
                   <td className="px-2 py-2">
-                    {observation?.observation_date ? (
+                    {observation ? (
                       <span className="rounded-full bg-[#e0791a] px-2 py-0.5 text-[9px] font-medium whitespace-nowrap text-white">
-                        {observation.locked ? 'Observed' : 'Scheduled'} {formatDay(observation.observation_date)}
+                        Observed {formatDay(observation.date)}
                       </span>
                     ) : (
                       <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[9px] whitespace-nowrap text-neutral-600">
@@ -338,49 +331,39 @@ function HistoryStat({ value, label, accent }: { value: number; label: string; a
   )
 }
 
-function EvaluationHistoryCard({ received, nextEvaluation }: { received: ProfessorObservation[]; nextEvaluation: string }) {
-  const { sorted, sort, toggle } = useSortedRows(received, EVALUATION_COMPARATORS, { key: 'date', dir: 'desc' })
+function EvaluationHistoryCard({ nextEvaluation }: { nextEvaluation: string }) {
+  const { sorted, sort, toggle } = useSortedRows(EVALUATION_HISTORY, EVALUATION_COMPARATORS, { key: 'date', dir: 'desc' })
 
   return (
     <section className="min-w-0 rounded-lg border border-neutral-200 bg-white p-4">
-      <h2 className="text-sm font-semibold text-neutral-900">Evaluation History</h2>
-      <p className="mt-0.5 text-[10px] text-neutral-500">Observations of your classes</p>
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
+        Evaluation History
+        <MockDataBadge />
+      </h2>
+      <MockDataNote>Past observations have no API yet.</MockDataNote>
 
       <table className="mt-3 w-full text-[10px]">
         <thead>
           <tr className="bg-neutral-100 text-neutral-600">
             <SortHeader label="Date" sortKey="date" sort={sort} onSort={toggle} first />
             <th className="px-2 py-1.5 text-left font-normal">Observer · Course</th>
-            <SortHeader label="Status" sortKey="status" sort={sort} onSort={toggle} last />
+            <SortHeader label="Outcome" sortKey="outcome" sort={sort} onSort={toggle} last />
           </tr>
         </thead>
         <tbody>
-          {sorted.map((o) => (
-            <tr key={o.observation_id} className="border-b border-neutral-100">
-              <td className="px-2 py-2 whitespace-nowrap text-neutral-900">
-                {o.observation_date ? formatDate(o.observation_date) : '—'}
-              </td>
+          {sorted.map((e) => (
+            <tr key={e.date} className="border-b border-neutral-100">
+              <td className="px-2 py-2 whitespace-nowrap text-neutral-900">{formatMonth(e.date)}</td>
               <td className="px-2 py-2 text-[9px] text-neutral-700">
-                {o.observer_name} · {o.course_code}
+                {e.observer} · {e.course}
               </td>
               <td className="px-2 py-2">
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[9px] font-medium whitespace-nowrap text-white ${
-                    o.locked ? 'bg-[#1c4532]' : 'bg-[#e0791a]'
-                  }`}
-                >
-                  {o.locked ? 'Signed by both' : o.status}
+                <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium whitespace-nowrap text-white ${OUTCOME_PILLS[e.outcome]}`}>
+                  {e.outcome}
                 </span>
               </td>
             </tr>
           ))}
-          {sorted.length === 0 && (
-            <tr>
-              <td colSpan={3} className="py-4 text-center text-neutral-500">
-                No observations yet.
-              </td>
-            </tr>
-          )}
         </tbody>
       </table>
 

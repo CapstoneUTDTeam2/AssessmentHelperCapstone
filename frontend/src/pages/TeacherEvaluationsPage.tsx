@@ -1,19 +1,29 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { ProfessorObservation } from '../api/observations'
-import { IncomingRequestsCard, RequestObserversCard, SurveyCard } from '../components/EvaluationRequestCards'
 import { SignupActions, SignupStatus } from '../components/SignupActions'
-import SortHeader from '../components/SortHeader'
-import { useFacultyEvaluations } from '../hooks/useFacultyEvaluations'
-import type { FacultyEvaluations } from '../hooks/useFacultyEvaluations'
 import { useSignups } from '../hooks/useSignups'
+import { MockDataBadge, MockDataNote } from '../components/MockData'
+import SortHeader from '../components/SortHeader'
+import {
+  EVALUATION_LOG,
+  EVALUATION_REQUIREMENT,
+  OPEN_SIGNUPS,
+  RECEIVED_REPORTS,
+  TEACHER_TODAY,
+  UPCOMING,
+} from '../data/teacherMock'
+import type { HistoryEntry, HistoryType, UpcomingEvaluation } from '../data/teacherMock'
 import { useSortedRows } from '../hooks/useSortedRows'
 import type { Comparators } from '../hooks/useSortedRows'
 import { downloadCsv } from '../utils/csv'
+import { loadSignoff } from '../utils/signoffs'
 import type { PageProps } from '../pageProps'
 
-/** An observation from this professor's point of view. */
-type Session = ProfessorObservation & { observedYou: boolean }
+const HISTORY_BADGES: Record<HistoryType, string> = {
+  Observing: 'bg-[#1c4532] text-white',
+  Observed: 'bg-[#e0791a] text-white',
+  Evaluation: 'bg-neutral-100 text-neutral-600',
+}
 
 const secondary =
   'rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] font-medium whitespace-nowrap text-neutral-900 transition-colors hover:bg-neutral-50 disabled:text-neutral-400 disabled:hover:bg-white'
@@ -29,66 +39,74 @@ function format(iso: string, options: Intl.DateTimeFormatOptions) {
   return toDate(iso).toLocaleDateString('en-US', { timeZone: 'UTC', ...options })
 }
 
+function daysBetween(from: string, to: string) {
+  return Math.round((toDate(to).getTime() - toDate(from).getTime()) / 86_400_000)
+}
+
 function clock(time: string) {
   const [h, m] = time.split(':').map(Number)
   return { text: `${h % 12 || 12}:${String(m).padStart(2, '0')}`, meridiem: h < 12 ? 'AM' : 'PM' }
 }
 
 /** "13:00", "14:15" → "1:00–2:15 PM"; "11:30", "12:45" → "11:30 AM–12:45 PM"; short drops AM/PM. */
-function timeRange(start: string | null, end: string | null, short = false) {
-  if (!start) return ''
+function timeRange(start: string, end: string, short = false) {
   const a = clock(start)
-  if (!end) return short ? a.text : `${a.text} ${a.meridiem}`
   const b = clock(end)
   if (short) return `${a.text}–${b.text}`
   return a.meridiem === b.meridiem ? `${a.text}–${b.text} ${b.meridiem}` : `${a.text} ${a.meridiem}–${b.text} ${b.meridiem}`
 }
 
-function localToday() {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+/** "CS 4348 Operating Systems" → "CS 4348". */
+function courseNumber(course: string) {
+  return course.split(' ').slice(0, 2).join(' ')
 }
 
-function sessionsOf(data: FacultyEvaluations): Session[] {
-  return [
-    ...(data.observations?.received ?? []).map((o) => ({ ...o, observedYou: true })),
-    ...(data.observations?.given ?? []).map((o) => ({ ...o, observedYou: false })),
-  ]
+/** "tomorrow, Wed Oct 21", "today, …", or "Wed Oct 21". */
+function dueLabel(iso: string) {
+  const date = format(iso, { weekday: 'short', month: 'short', day: 'numeric' }).replace(',', '')
+  const days = daysBetween(TEACHER_TODAY, iso)
+  if (days === 0) return `today, ${date}`
+  if (days === 1) return `tomorrow, ${date}`
+  return date
 }
 
-const byDate = (a: Session, b: Session) => (a.observation_date ?? '').localeCompare(b.observation_date ?? '')
+/** A colleague has submitted their report on your class and it still needs your signature. */
+function awaitingMySignature(u: UpcomingEvaluation) {
+  return u.kind === 'Being observed' && Boolean(RECEIVED_REPORTS[u.id]) && !loadSignoff(u.id)
+}
 
-/** What this professor still has to do on an observation that already happened. */
-function pendingAction(s: Session, today: string): 'fill' | 'sign' | null {
-  if (s.locked || !s.observation_date || s.observation_date > today || !s.needs_my_signature) return null
-  // The observer fills in the form; the observee signs once the observer has.
-  if (!s.observedYou) return 'fill'
-  return s.observer_signed ? 'sign' : null
+function monthsUntil(isoMonth: string) {
+  const [y, m] = isoMonth.split('-').map(Number)
+  const [ty, tm] = TEACHER_TODAY.split('-').map(Number)
+  return (y - ty) * 12 + (m - tm)
+}
+
+const HISTORY_COMPARATORS: Comparators<HistoryEntry, 'date' | 'type' | 'with' | 'status'> = {
+  date: (a, b) => a.date.localeCompare(b.date),
+  type: (a, b) => a.type.localeCompare(b.type),
+  with: (a, b) => a.withCourse.localeCompare(b.withCourse),
+  status: (a, b) => a.status.localeCompare(b.status),
 }
 
 function TeacherEvaluationsPage({ navigate }: PageProps) {
+  const [confirmedIds, setConfirmedIds] = useState<Set<number>>(() => new Set())
+  const [offered, setOffered] = useState<Set<number>>(() => new Set())
   const [showHistory, setShowHistory] = useState(false)
-  const { cycle, signup, professorId, refresh } = useSignups()
-  const data = useFacultyEvaluations(professorId, signup?.signup_id ?? null)
-  const today = cycle?.today ?? localToday()
+  const { cycle } = useSignups()
 
-  const sessions = sessionsOf(data)
-  const upcoming = sessions.filter((s) => (s.observation_date ?? '9999') >= today && !s.locked).sort(byDate)
-  const completed = sessions.filter((s) => !upcoming.includes(s)).sort((a, b) => byDate(b, a))
+  const sessions = useMemo(
+    () => UPCOMING.map((u) => (confirmedIds.has(u.id) ? { ...u, confirmed: true } : u)),
+    [confirmedIds],
+  )
+  const upcoming = sessions
+    .filter((u) => u.date >= TEACHER_TODAY)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start))
+  const completed = sessions
+    .filter((u) => u.date < TEACHER_TODAY)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.start.localeCompare(a.start))
+
+  const confirm = (id: number) => setConfirmedIds((prev) => new Set(prev).add(id))
   const openReport = (id: number) => navigate('Observation Report', String(id))
-  const reload = () => {
-    data.reload()
-    refresh()
-  }
-
-  if (professorId === null) {
-    return (
-      <main className="min-w-0 flex-1 px-6 py-7">
-        <h1 className="text-xl font-semibold text-neutral-900">Evaluations</h1>
-        <p className="mt-4 text-sm text-neutral-700">This session isn’t linked to a professor.</p>
-      </main>
-    )
-  }
 
   return (
     <main className="min-w-0 flex-1 px-6 py-7">
@@ -99,7 +117,6 @@ function TeacherEvaluationsPage({ navigate }: PageProps) {
             Your evaluation cycle, evaluations you receive, and evaluations you give · {cycle ? `${cycle.semester} ${cycle.year}` : '—'}
           </p>
           <SignupStatus />
-          {data.error && <p className="mt-1 text-[11px] text-[#b3261e]">{data.error}</p>}
         </div>
         <div className="flex gap-2">
           <SignupActions />
@@ -107,58 +124,44 @@ function TeacherEvaluationsPage({ navigate }: PageProps) {
       </header>
 
       <div className="mt-5 space-y-4">
-        <AttentionCard data={data} sessions={sessions} today={today} onOpenReport={openReport} />
-        <StatsRow data={data} sessions={sessions} cycleId={cycle?.cycle_id ?? null} />
-        {signup && (
-          <RequestObserversCard
-            key={`${signup.signup_id}-${data.sent?.requests.length ?? 0}`}
-            signup={signup}
-            professorId={professorId}
-            observerList={data.observerList}
-            sent={data.sent}
-            onChanged={reload}
-          />
-        )}
-        <IncomingRequestsCard professorId={professorId} incoming={data.incoming} accepted={data.accepted} onChanged={reload} />
-        <SurveyCard professorId={professorId} surveys={data.surveys} onChanged={reload} />
+        <AttentionCard sessions={sessions} onConfirm={confirm} onOpenReport={openReport} />
+        <StatsRow sessions={sessions} />
+        <OpenSignupsCard offered={offered} onOffer={(id) => setOffered((prev) => new Set(prev).add(id))} />
         <UpcomingSessionsCard
           items={upcoming}
-          loading={data.loading}
+          onConfirm={confirm}
           onOpenReport={openReport}
           onOpenCalendar={() => navigate('Dashboard')}
         />
         <RecentlyCompletedCard
           items={completed}
-          today={today}
           onOpenReport={openReport}
           showHistory={showHistory}
           onToggleHistory={() => setShowHistory((v) => !v)}
         />
-        {showHistory && <HistoryCard sessions={sessions} onOpenReport={openReport} />}
+        {showHistory && <HistoryCard />}
       </div>
     </main>
   )
 }
 
 function AttentionCard({
-  data,
   sessions,
-  today,
+  onConfirm,
   onOpenReport,
 }: {
-  data: FacultyEvaluations
-  sessions: Session[]
-  today: string
+  sessions: UpcomingEvaluation[]
+  onConfirm: (id: number) => void
   onOpenReport: (id: number) => void
 }) {
-  const toFill = sessions.filter((s) => pendingAction(s, today) === 'fill').sort(byDate)
-  const toSign = sessions.filter((s) => pendingAction(s, today) === 'sign').sort(byDate)
-  const pendingRequests = data.incoming?.pending_count ?? 0
-  const confirmed = data.sent?.signup_status === 'Requests Sent' ? (data.sent?.confirmed_count ?? 0) : 0
-  const surveysDue =
-    data.surveys?.window === 'open' ? data.surveys.surveys.filter((s) => !s.submitted).map((s) => s.role) : []
-  const count = toFill.length + toSign.length + (pendingRequests ? 1 : 0) + (confirmed ? 1 : 0) + (surveysDue.length ? 1 : 0)
-  const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const reports = sessions
+    .filter((u) => u.kind === 'Observing' && u.reportDue && u.reportDue >= TEACHER_TODAY)
+    .sort((a, b) => a.reportDue!.localeCompare(b.reportDue!))
+  const toSign = sessions.filter(awaitingMySignature).sort((a, b) => a.date.localeCompare(b.date))
+  const visits = sessions
+    .filter((u) => u.kind === 'Being observed' && !u.confirmed && u.date >= TEACHER_TODAY)
+    .sort((a, b) => a.date.localeCompare(b.date))
+  const count = reports.length + toSign.length + visits.length
 
   return (
     <section className={card}>
@@ -176,63 +179,51 @@ function AttentionCard({
       </div>
 
       <ul className="mt-3 space-y-2">
-        {toFill.map((s) => (
+        {reports.map((u) => (
           <AttentionItem
-            key={`fill-${s.observation_id}`}
+            key={`report-${u.id}`}
             tone="red"
-            title={`Fill in and sign your report for ${s.observee_name}`}
-            detail={`Observed ${s.course_code} Sec ${s.section_name} on ${format(s.observation_date!, { month: 'short', day: 'numeric' })}`}
+            title={`Submit your report for ${u.otherProfessor}`}
+            detail={`Due ${dueLabel(u.reportDue!)} · observed ${courseNumber(u.course)} Sec ${u.section} on ${format(u.date, { month: 'short', day: 'numeric' })}`}
           >
-            <button type="button" onClick={() => onOpenReport(s.observation_id)} className={primary}>
-              Open report
+            <button type="button" onClick={() => onOpenReport(u.id)} className={primary}>
+              Submit report
             </button>
           </AttentionItem>
         ))}
-        {toSign.map((s) => (
+        {toSign.map((u) => (
           <AttentionItem
-            key={`sign-${s.observation_id}`}
+            key={`sign-${u.id}`}
             tone="orange"
-            title={`Review and sign ${s.observer_name}’s report`}
-            detail={`Observed your ${s.course_code} Sec ${s.section_name} on ${format(s.observation_date!, { month: 'short', day: 'numeric' })}`}
+            title={`Review and sign ${u.otherProfessor}’s report`}
+            detail={`Observed your ${courseNumber(u.course)} Sec ${u.section} on ${format(u.date, { month: 'short', day: 'numeric' })}`}
           >
-            <button type="button" onClick={() => onOpenReport(s.observation_id)} className={primary}>
+            <button type="button" onClick={() => onOpenReport(u.id)} className={primary}>
               Review and sign
             </button>
           </AttentionItem>
         ))}
-        {pendingRequests > 0 && (
+        {visits.map((u) => (
           <AttentionItem
+            key={`visit-${u.id}`}
             tone="orange"
-            title={`Answer ${pendingRequests} observation request${pendingRequests === 1 ? '' : 's'}`}
-            detail="Colleagues asked you to observe their class. Requests expire after 48 hours."
+            title={`Confirm ${u.otherProfessor}’s visit to your class`}
+            detail={[
+              `${courseNumber(u.course)} Sec ${u.section}`,
+              `${format(u.date, { weekday: 'short', month: 'short', day: 'numeric' }).replace(',', '')}, ${timeRange(u.start, u.end, true)}`,
+              u.room,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
           >
-            <button type="button" onClick={() => scrollTo('observation-requests')} className={primary}>
-              View requests
+            <button type="button" className={secondary}>
+              Propose new time
+            </button>
+            <button type="button" onClick={() => onConfirm(u.id)} className={primary}>
+              Confirm
             </button>
           </AttentionItem>
-        )}
-        {confirmed > 0 && (
-          <AttentionItem
-            tone="orange"
-            title="Choose your observer"
-            detail={`${confirmed} observer${confirmed === 1 ? '' : 's'} confirmed your request.`}
-          >
-            <button type="button" onClick={() => window.scrollTo({ top: 0 })} className={primary}>
-              Choose
-            </button>
-          </AttentionItem>
-        )}
-        {surveysDue.length > 0 && (
-          <AttentionItem
-            tone="orange"
-            title="Take the post-observation survey"
-            detail={`As the ${surveysDue.join(' and ').toLowerCase()} · due ${format(data.surveys!.due, { month: 'short', day: 'numeric' })}`}
-          >
-            <button type="button" onClick={() => scrollTo('post-observation-survey')} className={primary}>
-              Take survey
-            </button>
-          </AttentionItem>
-        )}
+        ))}
         {count === 0 && <li className="py-3 text-center text-[11px] text-neutral-500">You’re all caught up.</li>}
       </ul>
     </section>
@@ -262,43 +253,40 @@ function AttentionItem({
   )
 }
 
-function StatsRow({ data, sessions, cycleId }: { data: FacultyEvaluations; sessions: Session[]; cycleId: number | null }) {
-  const status = data.status
-  const thisCycle = sessions.filter((s) => s.cycle_id === cycleId)
-  const received = thisCycle.filter((s) => s.observedYou)
-  const given = thisCycle.filter((s) => !s.observedYou)
-  const signed = given.filter((s) => s.observer_signed).length
-  const nextDue = status?.next_due_year ? `${status.next_due_semester ?? ''} ${status.next_due_year}`.trim() : '—'
-  const frequency = status?.frequency_years
-    ? `every ${status.frequency_years === 1 ? 'year' : `${status.frequency_years} years`}`
-    : 'unknown'
+function StatsRow({ sessions }: { sessions: UpcomingEvaluation[] }) {
+  const req = EVALUATION_REQUIREMENT
+  const months = monthsUntil(req.nextDueMonth)
+  const given = sessions.filter((u) => u.kind === 'Observing')
+  const done = given.filter((u) => u.date < TEACHER_TODAY)
+  const due = done.filter((u) => u.reportDue).length
+  const submitted = done.length - due
 
   return (
     <div className="grid gap-3 md:grid-cols-3">
-      <StatCard label="Next formal evaluation" value={<span className="text-2xl">{nextDue}</span>}>
-        {status ? `${status.status} · evaluated ${frequency}` : 'Evaluation status unavailable'}
+      <StatCard label="Next formal evaluation" value={<span className="text-2xl">{req.nextDue}</span>}>
+        {req.cycle} · about {months} month{months === 1 ? '' : 's'} away
       </StatCard>
       <StatCard
         label="Observations received"
         value={
           <>
-            <span className="text-2xl">{received.length}</span>
+            <span className="text-2xl">{req.observationsReceived}</span>
             <span className="ml-1 text-xs font-normal text-neutral-600">this cycle</span>
           </>
         }
       >
-        {received.filter((s) => s.locked).length} signed by both
+        Evaluation required {req.frequency.toLowerCase()}
       </StatCard>
       <StatCard
         label="Evaluations you give"
         value={
           <>
             <span className="text-2xl">{given.length}</span>
-            <span className="ml-1 text-xs font-normal text-neutral-600">this cycle</span>
+            <span className="ml-1 text-xs font-normal text-neutral-600">this term</span>
           </>
         }
       >
-        {signed} report{signed === 1 ? '' : 's'} signed · {given.length - signed} to go
+        {submitted} report{submitted === 1 ? '' : 's'} submitted · {due} due
       </StatCard>
     </div>
   )
@@ -314,15 +302,74 @@ function StatCard({ label, value, children }: { label: string; value: ReactNode;
   )
 }
 
-function DateBlock({ iso, boxed }: { iso: string | null; boxed?: boolean }) {
+function OpenSignupsCard({ offered, onOffer }: { offered: Set<number>; onOffer: (id: number) => void }) {
+  const open = OPEN_SIGNUPS.filter((s) => !offered.has(s.id)).length
+
+  return (
+    <section className={card}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-neutral-900">Faculty signed up to be observed</h2>
+          <p className="mt-0.5 text-[10px] text-neutral-500">Pick a class that fits your schedule and offer to observe it.</p>
+        </div>
+        <span className="shrink-0 rounded-full bg-neutral-100 px-2.5 py-0.5 text-[10px] font-medium text-neutral-700">
+          {open} open
+        </span>
+      </div>
+
+      <div className="mt-3 overflow-x-auto rounded-md border border-neutral-200">
+        <table className="w-full min-w-140 text-[11px]">
+          <thead>
+            <tr className="bg-neutral-50 text-[10px] tracking-wide text-neutral-500 uppercase">
+              <th className="px-3 py-2 text-left font-medium">Observee</th>
+              <th className="px-3 py-2 text-left font-medium">Course</th>
+              <th className="px-3 py-2 text-left font-medium">Section</th>
+              <th className="px-3 py-2 text-left font-medium">Days</th>
+              <th className="px-3 py-2 text-left font-medium">Time</th>
+              <th className="px-3 py-2">
+                <span className="sr-only">Action</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {OPEN_SIGNUPS.map((s) => {
+              const sent = offered.has(s.id)
+              return (
+                <tr key={s.id} className="border-t border-neutral-100">
+                  <td className="px-3 py-2.5">
+                    <p className="font-semibold text-neutral-900">{s.name}</p>
+                    <a href={`mailto:${s.email}`} className="text-[10px] text-neutral-500 underline hover:text-neutral-700">
+                      {s.email}
+                    </a>
+                  </td>
+                  <td className="px-3 py-2.5 font-semibold whitespace-nowrap text-neutral-900">{s.course}</td>
+                  <td className="px-3 py-2.5 text-neutral-700">{s.section}</td>
+                  <td className="px-3 py-2.5 whitespace-nowrap text-neutral-700">{s.days}</td>
+                  <td className="px-3 py-2.5 whitespace-nowrap text-neutral-700">{timeRange(s.start, s.end)}</td>
+                  <td className="px-3 py-2.5 text-right">
+                    <button type="button" disabled={sent} onClick={() => onOffer(s.id)} className={secondary}>
+                      {sent ? 'Offer sent' : 'Offer to observe'}
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+function DateBlock({ iso, boxed }: { iso: string; boxed?: boolean }) {
   return (
     <div
       className={`flex w-10 shrink-0 flex-col items-center justify-center ${boxed ? 'h-11 rounded-md border border-neutral-200 bg-white' : ''}`}
     >
       <span className={`text-[8px] font-semibold uppercase ${boxed ? 'text-[#c4561a]' : 'text-neutral-500'}`}>
-        {iso ? format(iso, { month: 'short' }) : '—'}
+        {format(iso, { month: 'short' })}
       </span>
-      <span className="text-sm leading-tight font-semibold text-neutral-900">{iso ? format(iso, { day: 'numeric' }) : ''}</span>
+      <span className="text-sm leading-tight font-semibold text-neutral-900">{format(iso, { day: 'numeric' })}</span>
     </div>
   )
 }
@@ -349,20 +396,20 @@ function RoleChip({ observedYou, past }: { observedYou: boolean; past: boolean }
   )
 }
 
-function sessionTitle(s: Session) {
-  return s.observedYou
-    ? `${s.observer_name} → your ${s.course_code} Sec ${s.section_name}`
-    : `${s.observee_name} · ${s.course_code} Sec ${s.section_name}`
+function sessionTitle(u: UpcomingEvaluation) {
+  return u.kind === 'Being observed'
+    ? `${u.otherProfessor} → your ${courseNumber(u.course)}`
+    : `${u.otherProfessor} · ${courseNumber(u.course)}`
 }
 
 function UpcomingSessionsCard({
   items,
-  loading,
+  onConfirm,
   onOpenReport,
   onOpenCalendar,
 }: {
-  items: Session[]
-  loading: boolean
+  items: UpcomingEvaluation[]
+  onConfirm: (id: number) => void
   onOpenReport: (id: number) => void
   onOpenCalendar: () => void
 }) {
@@ -376,34 +423,49 @@ function UpcomingSessionsCard({
       </div>
 
       <ul className="mt-3 space-y-2">
-        {items.map((s) => (
-          <li key={s.observation_id} className="flex flex-wrap items-center gap-3 rounded-md border border-neutral-200 px-3 py-2.5">
-            <DateBlock iso={s.observation_date} boxed />
-            <div className="min-w-0 flex-1">
-              <p className="flex flex-wrap items-center gap-2 text-xs font-semibold text-neutral-900">
-                <RoleChip observedYou={s.observedYou} past={false} />
-                {sessionTitle(s)}
-              </p>
-              <p className="mt-0.5 truncate text-[10px] text-neutral-500">
-                {[s.observation_date && format(s.observation_date, { weekday: 'short' }), timeRange(s.start_time, s.end_time, true)]
-                  .filter(Boolean)
-                  .join(' ')}
-              </p>
-              <p className="mt-0.5 flex items-center gap-1 text-[10px] text-[#3f8a55]">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#3f8a55]" aria-hidden="true" />
-                Scheduled
-              </p>
-            </div>
-            <div className="flex shrink-0 gap-2">
-              <button type="button" onClick={() => onOpenReport(s.observation_id)} className={secondary}>
-                {s.observedYou ? 'View form' : 'Evaluation form'}
-              </button>
-            </div>
-          </li>
-        ))}
-        {items.length === 0 && (
-          <li className="py-6 text-center text-[11px] text-neutral-500">{loading ? 'Loading…' : 'Nothing scheduled.'}</li>
-        )}
+        {items.map((u) => {
+          const observedYou = u.kind === 'Being observed'
+          const details = [
+            `Sec ${u.section}`,
+            `${format(u.date, { weekday: 'short' })} ${timeRange(u.start, u.end, true)}`,
+            u.room,
+          ]
+            .filter(Boolean)
+            .join(' · ')
+          return (
+            <li key={u.id} className="flex flex-wrap items-center gap-3 rounded-md border border-neutral-200 px-3 py-2.5">
+              <DateBlock iso={u.date} boxed />
+              <div className="min-w-0 flex-1">
+                <p className="flex flex-wrap items-center gap-2 text-xs font-semibold text-neutral-900">
+                  <RoleChip observedYou={observedYou} past={false} />
+                  {sessionTitle(u)}
+                </p>
+                <p className="mt-0.5 truncate text-[10px] text-neutral-500">{details}</p>
+                <p className={`mt-0.5 flex items-center gap-1 text-[10px] ${u.confirmed ? 'text-[#3f8a55]' : 'text-[#c4561a]'}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${u.confirmed ? 'bg-[#3f8a55]' : 'bg-[#c4561a]'}`} aria-hidden="true" />
+                  {u.confirmed ? 'Confirmed' : 'Waiting for your confirmation'}
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                {observedYou ? (
+                  <button type="button" className={secondary}>
+                    View rubric
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => onOpenReport(u.id)} className={secondary}>
+                    Evaluation form
+                  </button>
+                )}
+                {!u.confirmed && (
+                  <button type="button" onClick={() => onConfirm(u.id)} className={primary}>
+                    Confirm
+                  </button>
+                )}
+              </div>
+            </li>
+          )
+        })}
+        {items.length === 0 && <li className="py-6 text-center text-[11px] text-neutral-500">Nothing scheduled.</li>}
       </ul>
     </section>
   )
@@ -411,13 +473,11 @@ function UpcomingSessionsCard({
 
 function RecentlyCompletedCard({
   items,
-  today,
   onOpenReport,
   showHistory,
   onToggleHistory,
 }: {
-  items: Session[]
-  today: string
+  items: UpcomingEvaluation[]
   onOpenReport: (id: number) => void
   showHistory: boolean
   onToggleHistory: () => void
@@ -437,42 +497,60 @@ function RecentlyCompletedCard({
       </div>
 
       <ul className="mt-2 divide-y divide-neutral-100">
-        {items.slice(0, 6).map((s) => {
-          const action = pendingAction(s, today)
+        {items.map((u) => {
+          const observedYou = u.kind === 'Being observed'
+          const reportDue = !observedYou && u.reportDue
+          const received = observedYou && Boolean(RECEIVED_REPORTS[u.id])
+          const toSign = awaitingMySignature(u)
+          const title = observedYou
+            ? `${u.otherProfessor} → your ${courseNumber(u.course)} Sec ${u.section}`
+            : `${u.otherProfessor} · ${courseNumber(u.course)} Sec ${u.section}`
           return (
-            <li key={s.observation_id} className="flex flex-wrap items-center gap-3 py-2.5">
-              <DateBlock iso={s.observation_date} />
+            <li key={u.id} className="flex flex-wrap items-center gap-3 py-2.5">
+              <DateBlock iso={u.date} />
               <div className="min-w-0 flex-1">
                 <p className="flex flex-wrap items-center gap-2 text-xs font-semibold text-neutral-900">
-                  <RoleChip observedYou={s.observedYou} past />
-                  {sessionTitle(s)}
+                  <RoleChip observedYou={observedYou} past />
+                  {title}
                 </p>
-                {action === 'fill' ? (
+                {reportDue ? (
                   <p className="mt-0.5 flex items-center gap-1 text-[10px] text-[#b3261e]">
                     <span className="h-1.5 w-1.5 rounded-full bg-[#b3261e]" aria-hidden="true" />
-                    Report not signed yet
+                    Report due {dueLabel(u.reportDue!).split(',')[0]}
                   </p>
-                ) : action === 'sign' ? (
+                ) : toSign ? (
                   <p className="mt-0.5 flex items-center gap-1 text-[10px] text-[#c4561a]">
                     <span className="h-1.5 w-1.5 rounded-full bg-[#c4561a]" aria-hidden="true" />
                     Waiting for your signature
                   </p>
-                ) : s.locked ? (
-                  <p className="mt-0.5 text-[10px] text-[#3f8a55]">✓ Signed by both</p>
                 ) : (
-                  <p className="mt-0.5 text-[10px] text-neutral-500">
-                    Waiting for {s.observedYou ? s.observer_name : s.observee_name} to sign
+                  <p className="mt-0.5 text-[10px] text-[#3f8a55]">
+                    ✓ {received ? 'Signed' : observedYou ? 'Feedback ready' : 'Report submitted'}
                   </p>
                 )}
               </div>
               <div className="shrink-0">
-                <button
-                  type="button"
-                  onClick={() => onOpenReport(s.observation_id)}
-                  className={action ? primary : secondary}
-                >
-                  {action === 'fill' ? 'Fill in report' : action === 'sign' ? 'Review and sign' : 'View report'}
-                </button>
+                {reportDue ? (
+                  <button type="button" onClick={() => onOpenReport(u.id)} className={primary}>
+                    Submit report
+                  </button>
+                ) : toSign ? (
+                  <button type="button" onClick={() => onOpenReport(u.id)} className={primary}>
+                    Review and sign
+                  </button>
+                ) : received ? (
+                  <button type="button" onClick={() => onOpenReport(u.id)} className={secondary}>
+                    View report
+                  </button>
+                ) : observedYou ? (
+                  <button type="button" className={secondary}>
+                    View feedback
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => onOpenReport(u.id)} className={secondary}>
+                    View report
+                  </button>
+                )}
               </div>
             </li>
           )
@@ -483,33 +561,26 @@ function RecentlyCompletedCard({
   )
 }
 
-const HISTORY_COMPARATORS: Comparators<Session, 'date' | 'type' | 'with' | 'status'> = {
-  date: byDate,
-  type: (a, b) => Number(a.observedYou) - Number(b.observedYou),
-  with: (a, b) => sessionTitle(a).localeCompare(sessionTitle(b)),
-  status: (a, b) => a.status.localeCompare(b.status),
-}
-
-function HistoryCard({ sessions, onOpenReport }: { sessions: Session[]; onOpenReport: (id: number) => void }) {
-  const { sorted, sort, toggle } = useSortedRows(sessions, HISTORY_COMPARATORS, { key: 'date', dir: 'desc' })
+function HistoryCard() {
+  const { sorted, sort, toggle } = useSortedRows(EVALUATION_LOG, HISTORY_COMPARATORS, { key: 'date', dir: 'desc' })
 
   const exportHistory = () =>
     downloadCsv(
       'evaluation-history.csv',
-      ['Date', 'Type', 'With / Course', 'Term', 'Status'],
-      sorted.map((s) => [
-        s.observation_date ?? '',
-        s.observedYou ? 'Observed' : 'Observing',
-        sessionTitle(s),
-        `${s.semester} ${s.year}`,
-        s.status,
-      ]),
+      ['Date', 'Type', 'With / Course', 'Outcome', 'Status'],
+      sorted.map((h) => [h.date, h.type, h.withCourse, h.outcome ?? '', h.status]),
     )
 
   return (
     <section className={card}>
       <div className="flex items-start justify-between gap-3">
-        <h2 className="text-sm font-semibold text-neutral-900">History</h2>
+        <div>
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
+            History
+            <MockDataBadge />
+          </h2>
+          <MockDataNote>Past observations have no API yet.</MockDataNote>
+        </div>
         <button type="button" onClick={exportHistory} className="shrink-0 text-[11px] font-medium text-[#c4561a] hover:underline">
           Export →
         </button>
@@ -522,45 +593,30 @@ function HistoryCard({ sessions, onOpenReport }: { sessions: Session[]; onOpenRe
               <SortHeader label="Date" sortKey="date" sort={sort} onSort={toggle} first />
               <SortHeader label="Type" sortKey="type" sort={sort} onSort={toggle} />
               <SortHeader label="With / Course" sortKey="with" sort={sort} onSort={toggle} />
-              <th className="px-2 py-1.5 text-left font-normal">Term</th>
+              <th className="px-2 py-1.5 text-left font-normal">Outcome</th>
               <SortHeader label="Status" sortKey="status" sort={sort} onSort={toggle} />
               <th className="rounded-r px-2 py-1.5 text-left font-normal">Report</th>
             </tr>
           </thead>
           <tbody>
-            {sorted.map((s) => (
-              <tr key={s.observation_id} className="border-b border-neutral-100">
+            {sorted.map((h) => (
+              <tr key={h.id} className="border-b border-neutral-100">
                 <td className="px-2 py-2 whitespace-nowrap text-neutral-900">
-                  {s.observation_date ? format(s.observation_date, { month: 'short', day: '2-digit', year: 'numeric' }) : '—'}
+                  {format(h.date, { month: 'short', day: '2-digit', year: 'numeric' })}
                 </td>
                 <td className="px-2 py-2">
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${
-                      s.observedYou ? 'bg-[#e0791a] text-white' : 'bg-[#1c4532] text-white'
-                    }`}
-                  >
-                    {s.observedYou ? 'Observed' : 'Observing'}
-                  </span>
+                  <span className={`rounded-full px-2 py-0.5 text-[9px] font-medium ${HISTORY_BADGES[h.type]}`}>{h.type}</span>
                 </td>
-                <td className="max-w-48 px-2 py-2 text-neutral-900">{sessionTitle(s)}</td>
-                <td className="px-2 py-2 whitespace-nowrap text-neutral-700">
-                  {s.semester} {s.year}
-                </td>
-                <td className="px-2 py-2 whitespace-nowrap text-neutral-700">{s.status}</td>
+                <td className="max-w-48 px-2 py-2 text-neutral-900">{h.withCourse}</td>
+                <td className="px-2 py-2 text-neutral-700">{h.outcome ?? '—'}</td>
+                <td className="px-2 py-2 whitespace-nowrap text-neutral-700">{h.status}</td>
                 <td className="px-2 py-2">
-                  <button type="button" onClick={() => onOpenReport(s.observation_id)} className="text-[#c4561a] hover:underline">
+                  <a href="#" onClick={(e) => e.preventDefault()} className="text-[#c4561a] hover:underline">
                     View
-                  </button>
+                  </a>
                 </td>
               </tr>
             ))}
-            {sorted.length === 0 && (
-              <tr>
-                <td colSpan={6} className="py-6 text-center text-neutral-500">
-                  No observations yet.
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>

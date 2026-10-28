@@ -1,6 +1,6 @@
-// Frontend-only demo login, used when POST /api/auth/login can't be reached or
-// the seed database has no password for these demo emails. Sessions made here
-// are flagged `demo` so the UI can label them Mock data.
+// Frontend-only demo login. These accounts are hard-coded and checked in the
+// browser so the UI can be clicked through before the auth API exists.
+// Replace `authenticate` with a real API call once the backend supports it.
 
 export type Role = 'coordinator' | 'faculty'
 
@@ -9,12 +9,8 @@ export interface User {
   name: string
   title: string
   role: Role
-  /** Professors.ProfessorID the session loads. Demo coordinator sessions omit this. */
+  /** Professors.ProfessorID the faculty session loads. Coordinator sessions omit this. */
   professorId?: number
-  /** Department name from the login API; demo sessions omit it. */
-  department?: string
-  /** True when signed in with a hard-coded demo account instead of the auth API. */
-  demo?: boolean
 }
 
 interface DemoAccount extends User {
@@ -44,11 +40,7 @@ export function demoAccountFor(role: Role): DemoAccount {
   return DEMO_ACCOUNTS.find((a) => a.role === role)!
 }
 
-export function isDemoEmail(email: string) {
-  return DEMO_ACCOUNTS.some((a) => a.email.toLowerCase() === email.trim().toLowerCase())
-}
-
-export type AuthResult ={ ok: true; user: User } | { ok: false; error: string }
+export type AuthResult = { ok: true; user: User } | { ok: false; error: string }
 
 export function authenticate(email: string, password: string, role: Role): AuthResult {
   const account = DEMO_ACCOUNTS.find(
@@ -67,5 +59,5 @@ export function authenticate(email: string, password: string, role: Role): AuthR
     }
   }
   const { email: userEmail, name, title, role: userRole, professorId } = account
-  return { ok: true, user: { email: userEmail, name, title, role: userRole, professorId, demo: true } }
+  return { ok: true, user: { email: userEmail, name, title, role: userRole, professorId } }
 }

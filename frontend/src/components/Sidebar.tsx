@@ -55,11 +55,6 @@ function Sidebar({ user, active, onNavigate, onSignOut }: SidebarProps) {
           <div className="min-w-0">
             <p className="truncate text-xs font-medium">{user.name}</p>
             <p className="truncate text-[10px] text-white/70">{user.title}</p>
-            {user.demo && (
-              <span className="mt-1 inline-block rounded-full bg-[#fdf1e6] px-2 py-0.5 text-[9px] font-semibold tracking-wide text-[#c4561a] uppercase">
-                Mock data · demo login
-              </span>
-            )}
           </div>
         </div>
         <button

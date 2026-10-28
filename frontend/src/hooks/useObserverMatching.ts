@@ -1,8 +1,6 @@
 import { useCallback, useEffect } from 'react'
-import { getObserveeNotifications } from '../api/observerSelection'
-import type { ObserveeNotification } from '../api/observerSelection'
 import { getEligibleObservers, getObserveeSignup } from '../api/signups'
-import type { ObserverMatches } from '../api/signups'
+import type { ObserverMatches, SignupWithObservers } from '../api/signups'
 import { useAlert } from './useAlert'
 import type { AlertOptions, Alerts } from './useAlert'
 
@@ -56,56 +54,56 @@ export function useObserverMatching() {
   return { fetchEligibleObservers, fetchObserveeSignup }
 }
 
-// Remembers which notifications already popped up this browser session.
-const ALERTED_KEY = 'assessment-helper-notifications-shown'
+// Remembers which sign-ups already got the "list is ready" alert this browser session.
+const READY_ALERTED_KEY = 'assessment-helper-observer-list-ready'
 
-function alreadyAlerted(key: string): boolean {
+function alreadyAlerted(signupId: number): boolean {
   try {
-    return (sessionStorage.getItem(ALERTED_KEY) ?? '').split(',').includes(key)
+    return (sessionStorage.getItem(READY_ALERTED_KEY) ?? '').split(',').includes(String(signupId))
   } catch {
     return false
   }
 }
 
-function markAlerted(key: string) {
+function markAlerted(signupId: number) {
   try {
-    const seen = sessionStorage.getItem(ALERTED_KEY)
-    sessionStorage.setItem(ALERTED_KEY, seen ? `${seen},${key}` : key)
+    const seen = sessionStorage.getItem(READY_ALERTED_KEY)
+    sessionStorage.setItem(READY_ALERTED_KEY, seen ? `${seen},${signupId}` : String(signupId))
   } catch {
     // Storage unavailable; the alert may show again after a refresh.
   }
 }
 
-/** The alert for one committee notification (GET /api/observees/{id}/notifications). */
-export function notificationAlert(notification: ObserveeNotification): AlertOptions {
-  if (notification.type === 'survey_open') {
-    return { variant: 'info', title: 'Post-observation survey', message: notification.message }
+/** The alert telling a faculty member their potential observer list is ready. */
+export function observerListReadyAlert(
+  signup: Pick<SignupWithObservers, 'observers' | 'course_code' | 'section_name'>,
+): AlertOptions {
+  const count = signup.observers.length
+  return {
+    variant: 'success',
+    title: 'Your observer list is ready',
+    message: `${count} potential observer${count === 1 ? '' : 's'} matched for ${signup.course_code}.${signup.section_name}.`,
   }
-  return { variant: 'success', title: 'Your observer list is ready', message: notification.message }
 }
 
 /**
- * Pops up the committee's notifications for a faculty member, once per browser
- * session each: "your observer list is ready" after the committee sends the
- * lists, and the survey notice after the observation period.
+ * Tells a faculty member their potential observer list is ready: once their
+ * sign-up this cycle has matched observers, pops up an alert (once per session).
  * Pass null until the logged-in professor's backend ID is known.
  */
-export function useObserveeNotificationAlerts(professorId: number | null) {
+export function useObserverListReadyAlert(professorId: number | null) {
   const { showAlert } = useAlert()
 
   useEffect(() => {
     if (professorId === null) return
     const controller = new AbortController()
-    getObserveeNotifications(professorId, controller.signal)
-      .then(({ notifications }) => {
-        for (const notification of notifications) {
-          const key = `${notification.type}-${notification.signup_id}`
-          if (alreadyAlerted(key)) continue
-          markAlerted(key)
-          showAlert(notificationAlert(notification))
-        }
+    getObserveeSignup(professorId, undefined, controller.signal)
+      .then((signup) => {
+        if (signup.observers.length === 0 || alreadyAlerted(signup.signup_id)) return
+        markAlerted(signup.signup_id)
+        showAlert(observerListReadyAlert(signup))
       })
-      // Unknown professor or the request failed: nothing to announce.
+      // No sign-up yet (404) or the request failed: there's no list to announce.
       .catch(() => {})
     return () => controller.abort()
   }, [professorId, showAlert])
