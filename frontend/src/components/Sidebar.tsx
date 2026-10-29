@@ -1,6 +1,6 @@
 import type { Role, User } from '../auth/demoAccounts'
 
-const NAV_ITEMS: Record<Role, string[]> = {
+const NAV_ITEMS: Record<Exclude<Role, 'tester'>, string[]> = {
   coordinator: ['Dashboard', 'Faculty', 'Courses', 'Evaluations', 'Reports', 'Evaluation Criteria', 'Settings'],
   faculty: ['Dashboard', 'My Profile', 'Evaluations', 'Settings'],
 }
@@ -24,7 +24,7 @@ function Sidebar({ user, active, onNavigate, onSignOut }: SidebarProps) {
       </div>
 
       <nav className="mt-6 flex flex-col gap-1" aria-label="Main">
-        {NAV_ITEMS[user.role].map((item) => {
+        {NAV_ITEMS[user.role === 'coordinator' ? 'coordinator' : 'faculty'].map((item) => {
           const isActive = item === active
           return (
             <a
@@ -55,9 +55,9 @@ function Sidebar({ user, active, onNavigate, onSignOut }: SidebarProps) {
           <div className="min-w-0">
             <p className="truncate text-xs font-medium">{user.name}</p>
             <p className="truncate text-[10px] text-white/70">{user.title}</p>
-            {user.demo && (
+            {(user.demo || user.tester) && (
               <span className="mt-1 inline-block rounded-full bg-[#fdf1e6] px-2 py-0.5 text-[9px] font-semibold tracking-wide text-[#c4561a] uppercase">
-                Mock data · demo login
+                {user.tester ? 'Mock data · tester' : 'Mock data · demo login'}
               </span>
             )}
           </div>

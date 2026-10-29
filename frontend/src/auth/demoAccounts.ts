@@ -2,7 +2,7 @@
 // the seed database has no password for these demo emails. Sessions made here
 // are flagged `demo` so the UI can label them Mock data.
 
-export type Role = 'coordinator' | 'faculty'
+export type Role = 'coordinator' | 'faculty' | 'tester'
 
 export interface User {
   email: string
@@ -15,6 +15,8 @@ export interface User {
   department?: string
   /** True when signed in with a hard-coded demo account instead of the auth API. */
   demo?: boolean
+  /** True for the local test harness login. Not a process role. */
+  tester?: boolean
 }
 
 interface DemoAccount extends User {
@@ -36,6 +38,14 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     title: 'Faculty',
     role: 'faculty',
     professorId: 1,
+  },
+  {
+    email: 'admin@example.com',
+    password: 'testharness',
+    name: 'Tester',
+    title: 'Test harness',
+    role: 'tester',
+    tester: true,
   },
 ]
 
@@ -61,11 +71,16 @@ export function authenticate(email: string, password: string, role: Role): AuthR
     return {
       ok: false,
       error:
-        role === 'faculty'
-          ? 'This is an Assessment Coordinator account. Switch the role above to continue.'
-          : 'This account does not have Assessment Coordinator access.',
+        account.role === 'tester'
+          ? 'This is the tester login. Switch the role above to Tester.'
+          : role === 'faculty'
+            ? 'This is an Assessment Coordinator account. Switch the role above to continue.'
+            : 'This account does not have Assessment Coordinator access.',
     }
   }
-  const { email: userEmail, name, title, role: userRole, professorId } = account
-  return { ok: true, user: { email: userEmail, name, title, role: userRole, professorId, demo: true } }
+  const { email: userEmail, name, title, role: userRole, professorId, tester } = account
+  return {
+    ok: true,
+    user: { email: userEmail, name, title, role: userRole, professorId, tester, demo: true },
+  }
 }

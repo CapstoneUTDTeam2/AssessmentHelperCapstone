@@ -77,10 +77,43 @@ class DeadlineUpdate(BaseModel):
 CAMPUS_TIMEZONE = "America/Chicago"
 CAMPUS_NOW_SQL = "SELECT (now() AT TIME ZONE :tz) AS campus_now"
 
+# Test harness only. Not a product table; created on first clock read/write.
+ENSURE_CLOCK_SQL = """
+CREATE TABLE IF NOT EXISTS testharnessclock (
+    singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+    frozen_at TIMESTAMP WITHOUT TIME ZONE NOT NULL
+)
+"""
+CLOCK_GET_SQL = "SELECT frozen_at FROM testharnessclock WHERE singleton IS TRUE"
+CLOCK_SET_SQL = """
+INSERT INTO testharnessclock (singleton, frozen_at)
+VALUES (TRUE, :frozen_at)
+ON CONFLICT (singleton) DO UPDATE SET frozen_at = EXCLUDED.frozen_at
+"""
+CLOCK_CLEAR_SQL = "DELETE FROM testharnessclock"
+
 
 def campus_now():
-    with engine.connect() as conn:
+    # Input: none (optional testharnessclock.frozen_at)
+    # Output: America/Chicago now, or the frozen tester clock
+    with engine.begin() as conn:
+        conn.execute(text(ENSURE_CLOCK_SQL))
+        frozen = conn.execute(text(CLOCK_GET_SQL)).scalar()
+        if frozen is not None:
+            return frozen
         return conn.execute(text(CAMPUS_NOW_SQL), {"tz": CAMPUS_TIMEZONE}).scalar_one()
+
+
+def set_campus_clock(frozen_at):
+    # Input: naive datetime in America/Chicago, or None to follow the real clock
+    # Output: campus_now() after the change
+    with engine.begin() as conn:
+        conn.execute(text(ENSURE_CLOCK_SQL))
+        if frozen_at is None:
+            conn.execute(text(CLOCK_CLEAR_SQL))
+        else:
+            conn.execute(text(CLOCK_SET_SQL), {"frozen_at": frozen_at.replace(microsecond=0)})
+    return campus_now()
 
 
 def _today():

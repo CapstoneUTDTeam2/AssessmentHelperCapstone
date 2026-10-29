@@ -48,6 +48,7 @@ export interface ObserverSelectionResult {
   matched_count?: number
   unmatched_count?: number
   alert_count?: number
+  notified_count?: number
   signups: SelectionSignup[]
   alerts?: ObserverAlert[]
 }

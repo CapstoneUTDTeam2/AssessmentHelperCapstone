@@ -76,8 +76,15 @@ SELECT {SIGNUP_COLUMNS}
 WHERE os.SignupID = :signup_id
 """
 
-# SignupID has no default in the DDL.
-NEXT_SIGNUP_ID_SQL = "SELECT COALESCE(MAX(SignupID), 0) + 1 AS next_id FROM ObservationSignup"
+# SignupID has no default in the DDL. Include leftover child rows so a tester
+# reset that skipped ON DELETE CASCADE cannot reuse an occupied id.
+NEXT_SIGNUP_ID_SQL = """
+SELECT GREATEST(
+    COALESCE((SELECT MAX(SignupID) FROM ObservationSignup), 0),
+    COALESCE((SELECT MAX(SignupID) FROM SignupPreferredDate), 0),
+    COALESCE((SELECT MAX(SignupID) FROM SignupObserverList), 0)
+) + 1 AS next_id
+"""
 
 # Stops two signups at the same time from both getting through.
 LOCK_SIGNUPS_SQL = "LOCK TABLE ObservationSignup IN SHARE ROW EXCLUSIVE MODE"

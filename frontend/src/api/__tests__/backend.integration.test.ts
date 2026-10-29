@@ -41,6 +41,7 @@ const STATUS: Shape = {
   professor_id: 'number',
   name: 'string',
   current_level: 'string?',
+  start_term_id: 'number?',
   frequency_years: 'number?',
   last_evaluation_date: 'string?',
   next_due_year: 'number?',

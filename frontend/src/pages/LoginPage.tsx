@@ -7,6 +7,7 @@ import type { CatalogCourse } from '../api/courses'
 import { MockDataBadge } from '../components/MockData'
 import { authenticate, demoAccountFor, isDemoEmail } from '../auth/demoAccounts'
 import type { Role, User } from '../auth/demoAccounts'
+import { pickRandomThisTermInstructor } from '../api/testHarness'
 
 type FacultyChoice = { professor_id: number; professor_name: string }
 
@@ -26,13 +27,18 @@ function instructorsThisTerm(courses: CatalogCourse[]): FacultyChoice[] {
 
 const ROLES: Record<Role, { label: string; description: string; viewName: string }> = {
   coordinator: {
-    label: 'Assessment Coordinator',
+    label: 'Coordinator',
     description: 'Manage eligibility, observer matching and committee reports.',
     viewName: 'Coordinator',
   },
   faculty: {
     label: 'Faculty',
     description: 'View your evaluation schedule, observations and feedback.',
+    viewName: 'Faculty',
+  },
+  tester: {
+    label: 'Tester',
+    description: 'Opens a random faculty view. Swap people from the bar to walk signup and matching. Not a process role.',
     viewName: 'Faculty',
   },
 }
@@ -95,6 +101,24 @@ function LoginPage({ onLogin }: LoginPageProps) {
     setSubmitting(true)
     setError(null)
     try {
+      if (role === 'tester') {
+        const result = authenticate(email, password, role)
+        if (!result.ok) {
+          setError(result.error)
+          return
+        }
+        const pick = await pickRandomThisTermInstructor().catch(() => null)
+        onLogin({
+          ...result.user,
+          role: 'faculty',
+          name: pick?.professor_name ?? 'Faculty',
+          title: 'Faculty',
+          professorId: pick?.professor_id,
+          tester: true,
+          demo: true,
+        })
+        return
+      }
       const professor = await login(email.trim(), password)
       if (role === 'coordinator' && !professor.is_ac) {
         setError('This account does not have Assessment Coordinator access.')
@@ -135,7 +159,7 @@ function LoginPage({ onLogin }: LoginPageProps) {
             <div
               role="radiogroup"
               aria-label="Role"
-              className="mt-1.5 grid grid-cols-2 rounded-lg bg-neutral-100 p-1"
+              className="mt-1.5 grid grid-cols-3 rounded-lg bg-neutral-100 p-1"
             >
               {(Object.keys(ROLES) as Role[]).map((key) => {
                 const selected = role === key

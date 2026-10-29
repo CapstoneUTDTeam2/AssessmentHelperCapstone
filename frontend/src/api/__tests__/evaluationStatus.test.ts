@@ -13,6 +13,7 @@ const prof = (id: number, level: string | null, status: ProfessorEvaluationStatu
   professor_id: id,
   name: `Prof ${id}`,
   current_level: level,
+  start_term_id: 1,
   frequency_years: 1,
   last_evaluation_date: null,
   next_due_year: null,
