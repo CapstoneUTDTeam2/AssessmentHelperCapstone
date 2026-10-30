@@ -9,7 +9,7 @@ const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as cons
 
 /** True when a section meeting on `days` ("MW", "TR", or "Tuesday,Thursday") meets on this date. */
 export const meetsOn = (days: string, d: Date) =>
-  weekdaysFromMeetingDays(days).includes(WEEKDAY_LABELS[d.getUTCDay()] as 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri')
+  weekdaysFromMeetingDays(days).includes(WEEKDAY_LABELS[d.getUTCDay()] as WeekdayLabel)
 
 export function businessDays(from: string, to: string) {
   const days: string[] = []
@@ -64,15 +64,77 @@ const WEEKDAY_FROM_TOKEN: Record<string, 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri'> 
   FRIDAY: 'Fri',
 }
 
-/** "MW", "TR", or CourseBook "Tuesday,Thursday" → weekday labels. */
-export function weekdaysFromMeetingDays(days: string) {
-  const tokens = /[A-Za-z]{2,}/.test(days) ? days.split(/[^A-Za-z]+/).filter(Boolean) : [...days]
-  const seen = new Set<'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri'>()
-  for (const token of tokens) {
-    const day = WEEKDAY_FROM_TOKEN[token.toUpperCase()]
-    if (day) seen.add(day)
+type WeekdayLabel = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri'
+const WEEK_ORDER: WeekdayLabel[] = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+const LETTER_OF: Record<WeekdayLabel, string> = { Mon: 'M', Tue: 'T', Wed: 'W', Thu: 'R', Fri: 'F' }
+
+/** "MW", "TR", "MWF", or CourseBook "Tuesday,Thursday" → weekday labels in week order. */
+export function weekdaysFromMeetingDays(days: string | null | undefined) {
+  const seen = new Set<WeekdayLabel>()
+  for (const token of (days ?? '').split(/[^A-Za-z]+/).filter(Boolean)) {
+    const word = WEEKDAY_FROM_TOKEN[token.toUpperCase()]
+    if (word) {
+      seen.add(word)
+    } else if (/^[MTWRF]+$/i.test(token)) {
+      // Letter codes like "MW" or "TR": one letter per day.
+      for (const letter of token.toUpperCase()) seen.add(WEEKDAY_FROM_TOKEN[letter])
+    }
   }
-  return [...seen]
+  return WEEK_ORDER.filter((day) => seen.has(day))
+}
+
+/** Any meeting-day format → letter code like "MW" or "TR" ("" if unknown). */
+export function meetingDayLetters(days: string | null | undefined) {
+  return weekdaysFromMeetingDays(days).map((day) => LETTER_OF[day]).join('')
+}
+
+/** Any meeting-day format → "Mon/Wed". Falls back to the original text if it can't be read. */
+export function formatMeetingDays(days: string | null | undefined) {
+  const labels = weekdaysFromMeetingDays(days)
+  return labels.length ? labels.join('/') : (days ?? '')
+}
+
+/**
+ * Side-by-side layout for blocks that overlap in time on the same day.
+ * Each item gets a lane (0-based) and how many lanes its overlapping group needs,
+ * so it can be drawn at width 1/lanes and shifted by lane/lanes.
+ */
+export function layoutOverlaps<T extends { start: string; end: string }>(items: T[]) {
+  const toMin = (value: string) => {
+    const [h, m] = value.split(':').map(Number)
+    return (h || 0) * 60 + (m || 0)
+  }
+  const sorted = items
+    .map((item, index) => ({ item, index, start: toMin(item.start), end: toMin(item.end) }))
+    .sort((a, b) => a.start - b.start || a.end - b.end || a.index - b.index)
+  const placed: { item: T; index: number; lane: number; lanes: number }[] = []
+  let group: typeof placed = []
+  let laneEnds: number[] = []
+  let groupEnd = -1
+  const closeGroup = () => {
+    for (const entry of group) entry.lanes = laneEnds.length
+    group = []
+    laneEnds = []
+  }
+  for (const entry of sorted) {
+    if (entry.start >= groupEnd) {
+      closeGroup()
+      groupEnd = -1
+    }
+    let lane = laneEnds.findIndex((end) => end <= entry.start)
+    if (lane === -1) {
+      lane = laneEnds.length
+      laneEnds.push(entry.end)
+    } else {
+      laneEnds[lane] = entry.end
+    }
+    const out = { item: entry.item, index: entry.index, lane, lanes: 1 }
+    group.push(out)
+    placed.push(out)
+    groupEnd = Math.max(groupEnd, entry.end)
+  }
+  closeGroup()
+  return placed.sort((a, b) => a.index - b.index)
 }
 
 export function formatLongDate(iso: string) {

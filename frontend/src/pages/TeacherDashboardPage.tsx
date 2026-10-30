@@ -6,7 +6,7 @@ import { useFacultyEvaluations } from '../hooks/useFacultyEvaluations'
 import { useObserveeNotificationAlerts } from '../hooks/useObserverMatching'
 import { useSignups } from '../hooks/useSignups'
 import type { PageProps } from '../pageProps'
-import { weekdaysFromMeetingDays } from '../utils/calendar'
+import { layoutOverlaps, weekdaysFromMeetingDays } from '../utils/calendar'
 
 type Weekday = 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri'
 type VisitKind = 'Being observed' | 'Observing'
@@ -442,15 +442,16 @@ function DayColumn({
       {Array.from({ length: hours }, (_, i) => (
         <div key={i} className="border-b border-neutral-100" style={{ height: HOUR_HEIGHT }} />
       ))}
-      {events.map((event) => {
+      {layoutOverlaps(events).map(({ item: event, lane, lanes }) => {
         const top = ((minutes(event.start) - FIRST_HOUR * 60) / 60) * HOUR_HEIGHT
         const height = ((minutes(event.end) - minutes(event.start)) / 60) * HOUR_HEIGHT - 3
+        // Events at the same time share the column side by side instead of stacking.
         return (
           <div
             key={event.key}
             title={`${event.title} · ${event.start}–${event.end}${event.subtitle ? ` · ${event.subtitle}` : ''}`}
-            className={`absolute inset-x-1 overflow-hidden rounded px-1.5 py-1 ${EVENT_STYLES[event.tone]}`}
-            style={{ top: top + 1, height }}
+            className={`absolute overflow-hidden rounded px-1.5 py-1 ${EVENT_STYLES[event.tone]}`}
+            style={{ top: top + 1, height, left: `calc(${(lane / lanes) * 100}% + 4px)`, width: `calc(${100 / lanes}% - 8px)` }}
           >
             <p className="truncate text-[9px] leading-tight font-semibold">{event.title}</p>
             {event.subtitle && <p className="truncate text-[8px] leading-tight opacity-75">{event.subtitle}</p>}

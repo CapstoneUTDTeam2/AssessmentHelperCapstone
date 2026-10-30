@@ -8,6 +8,7 @@ import { DEMO_PROFESSOR_ID, loggedInProfessorId, loggedInUser } from '../auth/se
 import SortHeader from '../components/SortHeader'
 import { useSortedRows } from '../hooks/useSortedRows'
 import type { Comparators } from '../hooks/useSortedRows'
+import { formatMeetingDays } from '../utils/calendar'
 
 interface CurrentCourse {
   sectionId: number
@@ -252,7 +253,7 @@ function CurrentCoursesCard({ courses, termLabel }: { courses: CurrentCourse[]; 
                   </td>
                   <td className="px-2 py-2 text-neutral-700">{c.section}</td>
                   <td className="px-2 py-2 whitespace-nowrap text-neutral-700">
-                    {c.days} {c.start}–{c.end}
+                    {formatMeetingDays(c.days)} {c.start}–{c.end}
                   </td>
                   <td className="px-2 py-2">
                     {observation?.observation_date ? (
