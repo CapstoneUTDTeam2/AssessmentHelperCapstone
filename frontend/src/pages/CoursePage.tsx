@@ -433,8 +433,11 @@ function WeeklySchedule({ course, term }: { course: Course; term: string }) {
                         backgroundColor: colorOf(s.instructor),
                       }}
                     >
-                      <p className="truncate text-[9px] font-semibold">Sec {s.number}</p>
-                      <p className="truncate text-[8px] opacity-80">{s.instructor}</p>
+                      {/* When 3 or more share the slot, show just the number so it still fits. */}
+                      <p className="truncate text-[9px] font-semibold">{lanes > 2 ? s.number : `Sec ${s.number}`}</p>
+                      <p className="truncate text-[8px] opacity-80">
+                        {lanes > 2 ? s.instructor.split(' ')[0] : s.instructor}
+                      </p>
                     </div>
                   )
                 })}
