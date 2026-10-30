@@ -121,3 +121,35 @@ export function getEligibleObservers(signupId: number, signal?: AbortSignal) {
 export function listSignupMatches(signal?: AbortSignal) {
   return apiPost<SignupMatchList>('/api/match-observers/signups', undefined, undefined, signal)
 }
+
+export interface DueMatch {
+  faculty_id: number
+  faculty_name: string
+  evaluation_status: 'Due' | 'Overdue'
+  signed_up: boolean
+  course_code: string | null
+  course_name: string | null
+  section_id: number | null
+  meeting_days: string | null
+  start_time: string | null
+  end_time: string | null
+  eligible_count: number
+  insufficient: boolean
+  observers: EligibleObserver[]
+  reason?: string
+}
+
+export interface DueMatchList {
+  cycle_id: number
+  semester: string
+  year: number
+  assumed_due_signups?: boolean
+  faculty_count: number
+  insufficient_count: number
+  faculty: DueMatch[]
+}
+
+/** Tester preview: potential observers if every Due professor signed up. */
+export function getDueMatches(signal?: AbortSignal) {
+  return apiGet<DueMatchList>('/api/due-matches', undefined, signal)
+}

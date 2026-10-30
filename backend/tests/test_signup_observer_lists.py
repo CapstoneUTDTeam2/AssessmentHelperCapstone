@@ -29,6 +29,21 @@ def test_generate_for_every_signup_in_cycle(client):
         ]
 
 
+def test_due_matches_include_due_faculty(client):
+    response = client.get("/api/due-matches")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cycle_id"] == 2
+    assert body["assumed_due_signups"] is True
+    due_ids = {item["faculty_id"] for item in body["faculty"]}
+    for item in body["faculty"]:
+        assert item["evaluation_status"] == "Due"
+        observer_ids = [observer["observer_id"] for observer in item["observers"]]
+        assert len(observer_ids) <= 5
+        assert item["faculty_id"] not in observer_ids
+        assert set(observer_ids) <= due_ids
+
+
 def test_other_cycle_has_no_signups(client):
     response = client.post("/api/match-observers/signups", params={"cycle_id": 1})
     assert response.status_code == 200

@@ -23,10 +23,17 @@ const TONES: Record<EvaluationStatus, StatusTone> = {
 }
 
 const STATUS_LABELS: Record<EvaluationStatus, string> = {
-  Due: 'Due this semester',
+  Due: 'Due',
   Overdue: 'Overdue',
   'Not Due': 'Up to date',
   Unknown: 'Unknown',
+}
+
+/** Tester Faculty: Not Due shows the due semester; Due and Overdue stay as status only. */
+export function evaluationStatusLabel(p: ProfessorEvaluationStatus): string {
+  const term = p.next_due_year != null ? `${p.next_due_semester ?? ''} ${p.next_due_year}`.trim() : ''
+  if (p.status === 'Not Due' && term) return `Due ${term}`
+  return STATUS_LABELS[p.status]
 }
 
 /** Professors.CurrentLevel ("Associate Professor") as the short label the tables use. */
@@ -44,7 +51,7 @@ function nextDueSortKey(p: ProfessorEvaluationStatus) {
   return `${p.next_due_year}-${p.next_due_semester === 'Fall' ? '08' : '01'}`
 }
 
-export function toFacultyMember(p: ProfessorEvaluationStatus): FacultyMember {
+export function toFacultyMember(p: ProfessorEvaluationStatus, dueSemester = false): FacultyMember {
   const nextTerm = p.next_due_year !== null ? `${p.next_due_semester ?? ''} ${p.next_due_year}`.trim() : '—'
   return {
     id: p.professor_id,
@@ -53,7 +60,7 @@ export function toFacultyMember(p: ProfessorEvaluationStatus): FacultyMember {
     level: facultyLevel(p.current_level),
     courses: [],
     observationsReceived: null,
-    status: STATUS_LABELS[p.status],
+    status: dueSemester ? evaluationStatusLabel(p) : STATUS_LABELS[p.status],
     statusTone: TONES[p.status],
     nextEvaluationDate: nextDueSortKey(p),
     dueThisCycle: p.status === 'Due' || p.status === 'Overdue',
@@ -73,7 +80,10 @@ export function toFacultyMember(p: ProfessorEvaluationStatus): FacultyMember {
   }
 }
 
-export async function getFaculty(signal?: AbortSignal): Promise<{ term: CurrentTerm; members: FacultyMember[] }> {
+export async function getFaculty(
+  signal?: AbortSignal,
+  options?: { dueSemester?: boolean },
+): Promise<{ term: CurrentTerm; members: FacultyMember[] }> {
   const [{ current_term, professors }, catalog, alerts] = await Promise.all([
     getEvaluationStatuses(undefined, signal),
     getCourses(signal).catch(() => null),
@@ -94,7 +104,7 @@ export async function getFaculty(signal?: AbortSignal): Promise<{ term: CurrentT
   return {
     term: current_term,
     members: professors.map((professor) => {
-      const member = toFacultyMember(professor)
+      const member = toFacultyMember(professor, options?.dueSemester)
       member.courses = coursesByProfessor.get(professor.professor_id) ?? []
       member.unmatched = unmatchedIds.has(professor.professor_id)
       member.needsObserver = unmatchedIds.has(professor.professor_id) || lowIds.has(professor.professor_id)

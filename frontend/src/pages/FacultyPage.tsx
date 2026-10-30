@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { getFaculty } from '../api/faculty'
+import type { PageProps } from '../pageProps'
 import { getProfessorObservations } from '../api/observations'
 import type { ProfessorObservations } from '../api/observations'
 import type { EligibleObserver } from '../api/signups'
@@ -76,7 +77,7 @@ type LoadState =
   | { kind: 'error'; message: string }
   | { kind: 'ready'; term: CurrentTerm; members: FacultyMember[] }
 
-function FacultyPage() {
+function FacultyPage({ user }: PageProps) {
   const [search, setSearch] = useState('')
   const [level, setLevel] = useState<(typeof LEVEL_OPTIONS)[number]>('All levels')
   const [filter, setFilter] = useState<FilterKey | null>(null)
@@ -86,14 +87,14 @@ function FacultyPage() {
 
   useEffect(() => {
     const controller = new AbortController()
-    getFaculty(controller.signal)
+    getFaculty(controller.signal, { dueSemester: Boolean(user.tester) })
       .then(({ term, members }) => setLoad({ kind: 'ready', term, members }))
       .catch((err: unknown) => {
         if (controller.signal.aborted) return
         setLoad({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to load faculty' })
       })
     return () => controller.abort()
-  }, [])
+  }, [user.tester])
 
   const faculty = useMemo(() => (load.kind === 'ready' ? load.members : []), [load])
   const dueCount = faculty.filter((f) => f.statusTone === 'due').length

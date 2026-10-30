@@ -5,8 +5,10 @@ import { ApiError } from '../api/client'
 import type { UnmatchedFaculty } from '../api/kpis'
 import type { ObserverAlert, SelectionSignup } from '../api/observerSelection'
 import { notifySurvey } from '../api/surveys'
+import DueMatchesCard from '../components/DueMatchesCard'
 import EvaluationsCard from '../components/EvaluationsTable'
 import type { HireLevel } from '../data/dashboardMock'
+import type { PageProps } from '../pageProps'
 import { KPI_ACCENTS } from '../theme'
 
 // Phases (GET /api/evaluation-cycles/current) after the observation deadline, when the survey notice can go out.
@@ -19,7 +21,7 @@ const HIRE_LEVEL_DOTS: Record<HireLevel, string> = {
   Lecturer: 'bg-neutral-900',
 }
 
-function DashboardPage() {
+function DashboardPage({ user }: PageProps) {
   const [data, setData] = useState<CommitteeOverview | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selection, setSelection] = useState<{ signups: SelectionSignup[]; alerts: ObserverAlert[] } | null>(null)
@@ -150,6 +152,7 @@ function DashboardPage() {
 
         <div className="flex flex-col gap-4">
           <EvaluationsCard rows={data?.rows ?? []} today={data?.cycle?.today} />
+          {user.tester && <DueMatchesCard />}
           <SelectionPanel
             signups={selection?.signups ?? data?.signups?.signups.map(toSelectionSignup) ?? []}
             alerts={selection?.alerts ?? data?.alerts ?? []}
