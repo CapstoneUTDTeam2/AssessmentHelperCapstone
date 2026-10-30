@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { businessDays, formatTime, isWeekend } from '../utils/calendar'
+import { businessDays, formatTime, isWeekend, weekdaysFromMeetingDays } from '../utils/calendar'
 import Modal from './Modal'
 import MonthCalendar from './MonthCalendar'
 
@@ -20,7 +20,6 @@ export interface TeachingBlock {
   end: string
 }
 
-const DAY_LETTERS: Record<Weekday, string> = { Mon: 'M', Tue: 'T', Wed: 'W', Thu: 'R', Fri: 'F' }
 
 export interface ObserveAvailability {
   /** ISO dates the observer cannot observe. Every other business day is available. */
@@ -156,7 +155,7 @@ function ObserveSignupDialog({ windowStart, windowEnd, cycleLabel, teaching, ini
             {WEEKDAYS.map((day) => {
               const bad = badTimes.includes(day)
               const classes = teaching
-                .filter((c) => c.days.includes(DAY_LETTERS[day]))
+                .filter((c) => weekdaysFromMeetingDays(c.days).includes(day))
                 .sort((a, b) => a.start.localeCompare(b.start))
               return (
                 <div key={day} className="text-xs">

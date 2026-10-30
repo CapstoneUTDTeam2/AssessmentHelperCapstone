@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { businessDays, formatLongDate, formatTime, fromIso, meetsOn } from '../utils/calendar'
+import { businessDays, formatLongDate, formatMeetingDays, formatTime, fromIso, meetsOn } from '../utils/calendar'
 import Modal from './Modal'
 import MonthCalendar from './MonthCalendar'
 
@@ -39,8 +39,6 @@ interface ObservedSignupDialogProps {
 
 const keyOf = (s: { course: string; section: string }) => `${s.course}.${s.section}`
 
-const DAY_NAMES: Record<string, string> = { M: 'Mon', T: 'Tue', W: 'Wed', R: 'Thu', F: 'Fri' }
-const dayNames = (days: string) => [...days].map((d) => DAY_NAMES[d] ?? d).join('/')
 
 /** Render only while open; it opens as a modal on mount. */
 function ObservedSignupDialog({
@@ -144,7 +142,7 @@ function ObservedSignupDialog({
                     {s.course}.{s.section} · {s.title}
                   </span>
                   <span className="block text-[11px] text-neutral-500">
-                    {dayNames(s.days)} {formatTime(s.start)}–{formatTime(s.end)}
+                    {formatMeetingDays(s.days)} {formatTime(s.start)}–{formatTime(s.end)}
                     {s.room && s.room !== '—' ? ` · ${s.room}` : ''}
                   </span>
                 </span>

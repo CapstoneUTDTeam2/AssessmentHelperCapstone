@@ -4,17 +4,15 @@ import { ingestCourseBook } from '../api/coursebook'
 import { getCourses } from '../api/courses'
 import type { CatalogCourse } from '../api/courses'
 import type { Course, Days, Section } from '../data/courseMock'
+import { formatMeetingDays, layoutOverlaps, meetingDayLetters, weekdaysFromMeetingDays } from '../utils/calendar'
 
 /** Schedule block colors, assigned to a course's instructors in order. */
 const INSTRUCTOR_PALETTE = ['#1c4532', '#0f1f17', '#e0791a', '#3f8a55', '#c4561a']
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
 
-const DAY_INDEXES: Record<Days, number[]> = {
-  MW: [0, 2],
-  TR: [1, 3],
-  MWF: [0, 2, 4],
-}
+const DAY_INDEX: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4 }
+const dayIndexes = (days: Days) => weekdaysFromMeetingDays(days).map((day) => DAY_INDEX[day])
 
 /** Pixel height of one hour in the weekly schedule. */
 const HOUR_HEIGHT = 36
@@ -59,9 +57,9 @@ function formatTime(time: string) {
   return time.replace(/^0/, '')
 }
 
+/** CourseBook sends "Tuesday,Thursday"; the sample data sends "TR". Both become "TR". */
 function asDays(value: string | null): Days {
-  if (value === 'TR' || value === 'MWF') return value
-  return 'MW'
+  return meetingDayLetters(value)
 }
 
 function fromCatalog(course: CatalogCourse): Course {
@@ -349,7 +347,7 @@ function SectionsCard({ course, term }: { course: Course; term: string }) {
                 <p className="truncate text-[11px] font-semibold text-neutral-900">{section.instructor}</p>
               </div>
             </div>
-            <p className="mt-2 text-[10px] text-neutral-900">{section.days}</p>
+            <p className="mt-2 text-[10px] text-neutral-900">{formatMeetingDays(section.days)}</p>
             <p className="text-[10px] text-neutral-600">
               {formatTime(section.start)}–{formatTime(section.end)}
             </p>
@@ -417,17 +415,23 @@ function WeeklySchedule({ course, term }: { course: Course; term: string }) {
               className="relative border-l border-neutral-200"
               style={{ height, backgroundImage: gridLines }}
             >
-              {course.sections
-                .filter((s) => DAY_INDEXES[s.days].includes(dayIndex))
-                .map((s) => {
+              {layoutOverlaps(course.sections.filter((s) => s.start && s.end && dayIndexes(s.days).includes(dayIndex)))
+                .map(({ item: s, lane, lanes }, i) => {
                   const top = ((toMinutes(s.start) - firstHour * 60) / 60) * HOUR_HEIGHT
                   const blockHeight = ((toMinutes(s.end) - toMinutes(s.start)) / 60) * HOUR_HEIGHT
+                  // Sections at the same time share the column side by side instead of stacking.
                   return (
                     <div
-                      key={s.number}
+                      key={`${s.number}-${i}`}
                       title={`Sec ${s.number} · ${s.instructor} · ${formatTime(s.start)}–${formatTime(s.end)}`}
-                      className="absolute inset-x-0.5 overflow-hidden rounded px-1 py-0.5 text-white"
-                      style={{ top, height: blockHeight, backgroundColor: colorOf(s.instructor) }}
+                      className="absolute overflow-hidden rounded px-1 py-0.5 text-white"
+                      style={{
+                        top,
+                        height: blockHeight,
+                        left: `calc(${(lane / lanes) * 100}% + 2px)`,
+                        width: `calc(${100 / lanes}% - 4px)`,
+                        backgroundColor: colorOf(s.instructor),
+                      }}
                     >
                       <p className="truncate text-[9px] font-semibold">Sec {s.number}</p>
                       <p className="truncate text-[8px] opacity-80">{s.instructor}</p>
