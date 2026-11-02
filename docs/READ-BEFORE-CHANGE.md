@@ -111,6 +111,7 @@ If a Prof signs up for a cycle to be Observed, they should be automatically put 
    1. system should show 5 Profs who are free at that time AND who teach 1000-level courses in the same department
    2. system should not show Prof A as a potential Observer for Prof A themself.
    3. ALERT in AC Dashboard immediately IF no Observer can be found for a signup
+3. A Prof "teaches" a level if they taught it in their department in the past 2 years, which the system checks as the last four Spring/Fall semesters (`docs/Q_A.docx`, Question 6).
 
 ---
 

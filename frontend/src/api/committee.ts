@@ -119,6 +119,21 @@ export function committeeKpis(data: CommitteeOverview | null): Kpi[] {
   const sufficiency = k.list_sufficiency_rate
   const missing = k.missing_observation_count
   const survey = k.survey_completion_rate
+  // Only overdue evaluations are needed during the cycle; the rest are generated after the feedback deadline.
+  const waiting = `Available after ${k.feedback_deadline}`
+  if (!k.final) {
+    return [
+      {
+        label: 'Overdue Evaluations',
+        detail: 'KPI 1.2 · overdue this cycle',
+        value: String(k.overdue_evaluation_count.count),
+        accent: k.overdue_evaluation_count.count > 0 ? 'red' : 'green',
+      },
+      ...['Eligibility Accuracy', 'Participation Rate', 'Observer Utilization', 'List Sufficiency', 'Missing Observations', 'Survey Completion'].map(
+        (label) => ({ label, detail: waiting, value: '—', accent: 'black' as const }),
+      ),
+    ]
+  }
   return [
     {
       label: 'Eligibility Accuracy',

@@ -411,3 +411,59 @@ def test_choose_works_after_a_confirmed_observer_changes_availability(client, li
 def test_database_still_blocks_requests_to_ineligible_observers(client, list_ready):
     with _db() as conn, pytest.raises(psycopg.errors.RaiseException):
         conn.execute("INSERT INTO ObserverRequest (RequestID, SignupID, ObserverProfessorID, Status) VALUES (77, 3, 2, 'Pending')")
+
+
+# An observer must be free on the specific date.
+
+def _confirmed(client, list_ready):
+    _send(client, [1])
+    request = client.get("/api/signups/3/requests").json()["requests"][0]
+    assert client.post(f"/api/observer-requests/{request['request_id']}/accept", json={"observer_id": 1}).status_code == 200
+
+
+def _block(observer_id, on_date):
+    with _db() as conn:
+        conn.execute("INSERT INTO ObserverUnavailableDate VALUES (%s, 2, %s)", (observer_id, on_date))
+
+
+def test_cannot_schedule_on_a_date_the_observer_marked_unavailable(client, list_ready):
+    _confirmed(client, list_ready)
+    _block(1, list_ready["monday"])
+    request = client.get("/api/signups/3/requests").json()["requests"][0]
+    assert request["available_dates"] == [str(list_ready["wednesday"])]
+    response = client.post(
+        "/api/signups/3/select-observer",
+        json={"observee_id": 3, "observer_id": 1, "observation_date": str(list_ready["monday"])},
+    )
+    assert response.status_code == 409
+
+
+def test_default_date_skips_days_the_observer_is_not_free(client, list_ready):
+    _confirmed(client, list_ready)
+    _block(1, list_ready["monday"])
+    response = client.post("/api/signups/3/select-observer", json={"observee_id": 3, "observer_id": 1})
+    assert response.status_code == 201
+    assert response.json()["observation_date"] == str(list_ready["wednesday"])
+
+
+def test_observer_not_free_on_any_date_cannot_confirm(client, list_ready):
+    _send(client, [1])
+    _block(1, list_ready["monday"])
+    _block(1, list_ready["wednesday"])
+    request = client.get("/api/signups/3/requests").json()["requests"][0]
+    response = client.post(f"/api/observer-requests/{request['request_id']}/accept", json={"observer_id": 1})
+    assert response.status_code == 409
+
+
+def test_observer_cannot_be_double_booked(client, list_ready):
+    with _db() as conn:
+        conn.execute("SET session_replication_role = replica")
+        conn.execute("UPDATE Sections SET MeetingDays = 'MW', StartTime = '13:00', EndTime = '14:15' WHERE SectionID = 5")
+        conn.execute(
+            "INSERT INTO Observation (ObservationID, SignupID, ObservationDate, ObserverProfessorID, TemplateID, "
+            "ScheduledDate, Status, ObserveeID) SELECT 95, 4, %s, 1, 3, %s, 'Scheduled', 4",
+            (list_ready["monday"], list_ready["monday"]),
+        )
+    _confirmed(client, list_ready)
+    request = client.get("/api/signups/3/requests").json()["requests"][0]
+    assert request["available_dates"] == [str(list_ready["wednesday"])]

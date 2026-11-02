@@ -1003,6 +1003,56 @@ AS $$
     END;
 $$;
 
+-- True when an observer can observe this signup's class on this date: not marked
+-- unavailable, not teaching then, and not already observing another class then.
+CREATE OR REPLACE FUNCTION observer_free_on(
+    p_observer_id INT,
+    p_signup_id INT,
+    p_date DATE
+)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+AS $$
+    WITH target AS (
+        SELECT os.CycleID, s.TermID, s.StartTime, s.EndTime,
+               SUBSTRING('MTWRFS' FROM EXTRACT(ISODOW FROM p_date)::INT FOR 1) AS DayLetter
+        FROM ObservationSignup os
+        JOIN Sections s ON s.SectionID = os.SectionID
+        WHERE os.SignupID = p_signup_id
+    )
+    SELECT NOT EXISTS (
+        SELECT 1 FROM ObserverUnavailableDate oud, target t
+        WHERE oud.ProfessorID = p_observer_id
+          AND oud.CycleID = t.CycleID
+          AND oud.UnavailableDate = p_date
+    )
+    AND NOT EXISTS (
+        SELECT 1
+        FROM TeachingAssignment ta
+        JOIN Sections s ON s.SectionID = ta.SectionID
+        CROSS JOIN target t
+        WHERE ta.ProfessorID = p_observer_id
+          AND s.TermID = t.TermID
+          AND POSITION(t.DayLetter IN meeting_day_letters(s.MeetingDays)) > 0
+          AND s.StartTime < t.EndTime
+          AND s.EndTime > t.StartTime
+    )
+    AND NOT EXISTS (
+        SELECT 1
+        FROM Observation o
+        JOIN ObservationSignup os ON os.SignupID = o.SignupID
+        JOIN Sections s ON s.SectionID = os.SectionID
+        CROSS JOIN target t
+        WHERE o.ObserverProfessorID = p_observer_id
+          AND o.SignupID <> p_signup_id
+          AND o.Status IS DISTINCT FROM 'Not Held'
+          AND COALESCE(o.ObservationDate, o.ScheduledDate) = p_date
+          AND s.StartTime < t.EndTime
+          AND s.EndTime > t.StartTime
+    );
+$$;
+
 --For each potential observer:
 -- 1. Same department, not the observee.
 -- 2. Taught the same course level within four Fall/Spring semesters.

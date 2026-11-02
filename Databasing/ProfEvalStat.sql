@@ -128,6 +128,11 @@ SELECT
         WHEN dt.NextDueYear < cc.YearNum
             THEN 'Overdue'
 
+        -- Yearly evaluations are due in either semester of the calendar year.
+        WHEN dt.NextDueYear = cc.YearNum
+             AND dt.FrequencyYears = 1
+            THEN 'Due'
+
         WHEN dt.NextDueYear = cc.YearNum
              AND dt.NextDueSemester = 'Spring'
              AND cc.Semester = 'Fall'

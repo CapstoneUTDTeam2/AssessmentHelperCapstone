@@ -80,6 +80,7 @@ WHERE r.ObserverProfessorID = :observer_id
 ORDER BY r.RequestDate DESC, r.RequestTime DESC, r.RequestID DESC
 """
 
+OBSERVER_FREE_SQL = "SELECT observer_free_on(:observer_id, :signup_id, :on_date)"
 PROFESSOR_SQL = "SELECT professorid, professorname FROM Professors WHERE professorid = :professor_id"
 SAVED_LIST_SQL = "SELECT observerprofessorid FROM SignupObserverList WHERE SignupID = :signup_id"
 PREFERRED_DATES_SQL = """
@@ -243,6 +244,16 @@ def _future_proposed_dates(conn, signup_id, today):
     return [d for d in dates if d >= today]
 
 
+def _free_dates(conn, observer_id, signup_id, dates):
+    # Eligibility only needs one free date, so check the observer on each date itself.
+    return [
+        d for d in dates
+        if conn.execute(
+            text(OBSERVER_FREE_SQL), {"observer_id": observer_id, "signup_id": signup_id, "on_date": d}
+        ).scalar_one()
+    ]
+
+
 # What: observee sends observation requests to all or some of their saved observers (AHC-261, AHC-262).
 @router.post("/observer-requests", status_code=201)
 def send_observer_requests(body: SendRequestsBody):
@@ -344,7 +355,16 @@ def list_signup_requests(signup_id: int):
     with engine.connect() as conn:
         signup = _require_signup(conn, signup_id)
         rows = conn.execute(text(SIGNUP_REQUESTS_SQL), {"signup_id": signup_id}).mappings().all()
-    requests = [_request_payload(r, now) for r in rows]
+        proposed = _future_proposed_dates(conn, signup_id, now.date())
+        requests = [
+            {
+                **_request_payload(r, now),
+                "available_dates": [
+                    d.isoformat() for d in _free_dates(conn, r["observerprofessorid"], signup_id, proposed)
+                ],
+            }
+            for r in rows
+        ]
     return {
         "signup_id": signup_id,
         "signup_status": signup["status"],
@@ -422,6 +442,9 @@ def _respond(request_id, observer_id, accept):
             if accept:
                 cycle = resolve_cycle(conn, row["cycleid"])
                 require_before_deadline(cycle, "observation", now.date())
+                proposed = _future_proposed_dates(conn, row["signupid"], now.date())
+                if not _free_dates(conn, observer_id, row["signupid"], proposed):
+                    raise HTTPException(status_code=409, detail="You aren't free on any of the proposed dates")
                 confirmed = conn.execute(
                     text(OBSERVER_CONFIRMED_COUNT_SQL),
                     {"observer_id": observer_id, "cycle_id": row["cycleid"]},
@@ -488,12 +511,15 @@ def choose_observer(signup_id: int, body: SelectObserverBody):
             require_before_deadline(cycle, "observation", today)
 
             proposed = _future_proposed_dates(conn, signup_id, today)
-            observation_date = body.observation_date or (proposed[0] if proposed else None)
-            if observation_date is None or observation_date not in proposed:
+            free = _free_dates(conn, body.observer_id, signup_id, proposed)
+            observation_date = body.observation_date or (free[0] if free else None)
+            if body.observation_date is not None and observation_date not in proposed:
                 raise HTTPException(
                     status_code=400,
                     detail="The observation date must be one of the proposed dates that hasn't passed",
                 )
+            if observation_date not in free:
+                raise HTTPException(status_code=409, detail="That observer isn't free on this date")
 
             observation_id = conn.execute(text(NEXT_OBSERVATION_ID_SQL)).scalar_one()
             conn.execute(

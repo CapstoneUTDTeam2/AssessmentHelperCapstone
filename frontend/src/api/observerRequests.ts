@@ -24,6 +24,8 @@ export interface ObserverRequest {
   start_time: string | null
   end_time: string | null
   proposed_dates: string[]
+  /** Proposed dates this observer is free on. Only on a signup's request list. */
+  available_dates?: string[]
   requested_at: string | null
   expires_at: string | null
   /** Set once the observee picked this observer. */

@@ -16,12 +16,16 @@ export interface MissingObservation {
   observer: string
   planned_date: string | null
   status: string
+  reason: string | null
 }
 
 export interface Kpis {
   cycle_id: number
   semester: string
   year: number
+  /** True after the feedback deadline, when the process doc says KPIs are generated. */
+  final: boolean
+  feedback_deadline: string
   evaluation_eligibility_accuracy: {
     total_matches: number
     correct_matches: number

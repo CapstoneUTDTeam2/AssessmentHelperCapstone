@@ -1,11 +1,11 @@
 """AHC-300 to AHC-306 KPIs, AHC-307 executive dashboard, AHC-308 unmatched faculty report."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import psycopg
 import pytest
 
-from app.api import cycle_deadlines, observer_selection
+from app.api import cycle_deadlines, kpis, observer_selection
 from tests.conftest import TEST_DATABASE_URL, _raw_conninfo
 
 
@@ -143,22 +143,13 @@ def test_list_sufficiency(client, lists_saved):
     assert sufficiency["percent_of_full_list"] == 10.0
 
 
-def test_missing_observation_count(client):
+def test_missing_observation_count(client, monkeypatch):
     with _db() as conn:
-        # The sample dates pass as real time goes by, so start with both still upcoming.
-        conn.execute(
-            "UPDATE Observation SET ScheduledDate = %s, ObservationDate = %s WHERE ObservationID IN (3, 4)",
-            (_today() + timedelta(days=2), _today() + timedelta(days=2)),
-        )
+        deadline = conn.execute("SELECT ObservationDeadLine FROM EvaluationCycle WHERE CycleID = 2").fetchone()[0]
     assert _kpis(client)["missing_observation_count"]["count"] == 0
-    with _db() as conn:
-        conn.execute(
-            "UPDATE Observation SET ScheduledDate = %s, ObservationDate = %s WHERE ObservationID = 3",
-            (_today() - timedelta(days=2), _today() - timedelta(days=2)),
-        )
+    _clock(monkeypatch, deadline + timedelta(days=1))
     missing = _kpis(client)["missing_observation_count"]
-    assert missing["count"] == 1
-    assert missing["observations"][0]["observation_id"] == 3
+    assert [o["observation_id"] for o in missing["observations"]] == [3, 4]
     assert missing["observations"][0]["observee"] == "Carol Williams"
 
 
@@ -247,3 +238,69 @@ def test_not_held_is_not_an_outstanding_report(client):
 def test_not_held_does_not_count_as_evaluated(client, carol_due):
     client.post("/api/observations/3/not-held", json={"observee_id": 3, "reason": "Class was cancelled."})
     assert _status("ProfessorEvaluationStatus") == "Due"
+
+
+def _clock(monkeypatch, on_date):
+    monkeypatch.setattr(kpis, "campus_now", lambda: datetime.combine(on_date, datetime.min.time()))
+
+
+def test_unsigned_observation_is_missing_only_after_the_deadline(client, monkeypatch):
+    with _db() as conn:
+        conn.execute("UPDATE Observation SET ScheduledDate = %s, ObservationDate = %s WHERE ObservationID = 3",
+                     (_today() - timedelta(days=2), _today() - timedelta(days=2)))
+        deadline = conn.execute("SELECT ObservationDeadLine FROM EvaluationCycle WHERE CycleID = 2").fetchone()[0]
+    _clock(monkeypatch, deadline)
+    assert _kpis(client)["missing_observation_count"]["count"] == 0
+    _clock(monkeypatch, deadline + timedelta(days=1))
+    assert 3 in [o["observation_id"] for o in _kpis(client)["missing_observation_count"]["observations"]]
+
+
+def test_one_signature_is_not_missing(client, monkeypatch):
+    with _db() as conn:
+        conn.execute("UPDATE Observation SET ObserverSigned = TRUE WHERE ObservationID = 3")
+        deadline = conn.execute("SELECT ObservationDeadLine FROM EvaluationCycle WHERE CycleID = 2").fetchone()[0]
+    _clock(monkeypatch, deadline + timedelta(days=1))
+    assert 3 not in [o["observation_id"] for o in _kpis(client)["missing_observation_count"]["observations"]]
+
+
+def test_not_held_observer_is_not_utilized(client):
+    before = _kpis(client)["observer_utilization_rate"]["observers"]
+    client.post("/api/observations/3/not-held", json={"observee_id": 3, "reason": "Class was cancelled."})
+    assert _kpis(client)["observer_utilization_rate"]["observers"] == before - 1
+
+
+def test_submitted_surveys_only_counts_observees(client):
+    with _db() as conn:
+        observees = conn.execute(
+            "SELECT COUNT(*) FROM PostObservationSurveyResponse WHERE CycleID = 2 AND Role = 'Observee'"
+        ).fetchone()[0]
+    assert _kpis(client)["survey_completion_rate"]["submitted_surveys"] == observees
+
+
+def test_kpis_are_final_only_after_the_feedback_deadline(client, monkeypatch):
+    with _db() as conn:
+        deadline = conn.execute(
+            "SELECT PostObservationFeedbackDeadLine FROM EvaluationCycle WHERE CycleID = 2"
+        ).fetchone()[0]
+    _clock(monkeypatch, deadline)
+    assert _kpis(client)["final"] is False
+    _clock(monkeypatch, deadline + timedelta(days=1))
+    assert _kpis(client)["final"] is True
+
+
+@pytest.mark.parametrize(
+    "level, last_evaluated, status",
+    [
+        ("Assistant Professor", "2025-03-15", "Due"),
+        ("Assistant Professor", "2025-10-14", "Due"),
+        ("Assistant Professor", "2024-10-14", "Overdue"),
+        ("Associate Professor", "2024-03-15", "Overdue"),
+        ("Full Professor", "2024-10-14", "Due"),
+    ],
+)
+def test_due_timing_matches_the_process(client, carol_due, level, last_evaluated, status):
+    with _db() as conn:
+        conn.execute("SET session_replication_role = replica")
+        conn.execute("UPDATE Professors SET CurrentLevel = %s WHERE ProfessorID = 3", (level,))
+        conn.execute("UPDATE Observation SET CompletedDate = %s WHERE ObservationID = 90", (last_evaluated,))
+    assert _status("ProfessorEvaluationStatus") == status

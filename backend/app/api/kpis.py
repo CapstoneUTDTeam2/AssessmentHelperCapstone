@@ -89,14 +89,17 @@ SELECT
     (SELECT COUNT(DISTINCT os.ObserveeProfessorID) FROM ObservationSignup os WHERE os.CycleID = :cycle_id) AS signed_up,
     (SELECT COUNT(*) FROM ObservationSignup os WHERE os.CycleID = :cycle_id) AS signups,
     (SELECT COUNT(DISTINCT o.ObserverProfessorID) FROM Observation o
-       JOIN ObservationSignup os ON o.SignupID = os.SignupID WHERE os.CycleID = :cycle_id) AS observers,
+       JOIN ObservationSignup os ON o.SignupID = os.SignupID
+       WHERE os.CycleID = :cycle_id AND o.Status IS DISTINCT FROM 'Not Held') AS observers,
     (SELECT COUNT(*) FROM SignupObserverList sol
        JOIN ObservationSignup os ON sol.SignupID = os.SignupID WHERE os.CycleID = :cycle_id) AS saved_matches,
     (SELECT COUNT(DISTINCT sol.SignupID) FROM SignupObserverList sol
        JOIN ObservationSignup os ON sol.SignupID = os.SignupID WHERE os.CycleID = :cycle_id) AS signups_with_list,
-    (SELECT COUNT(*) FROM PostObservationSurveyResponse r WHERE r.CycleID = :cycle_id) AS surveys
+    (SELECT COUNT(*) FROM PostObservationSurveyResponse r WHERE r.CycleID = :cycle_id AND r.Role = 'Observee') AS surveys
 """
 
+# KPI 4.1: reported as not held, or nobody signed by the observation deadline.
+# One signature means it happened, so that stays an outstanding report.
 MISSING_SQL = """
 SELECT o.observationid, o.signupid, ee.professorname AS observee, obs.professorname AS observer,
        COALESCE(o.ObservationDate, o.ScheduledDate) AS planned, o.status, o.notheldreason
@@ -107,7 +110,7 @@ JOIN Professors obs ON o.ObserverProfessorID = obs.ProfessorID
 WHERE os.CycleID = :cycle_id
   AND (
       o.Status = 'Not Held'
-      OR (o.Status IS DISTINCT FROM 'Completed' AND COALESCE(o.ObservationDate, o.ScheduledDate) < :today)
+      OR (:past_deadline AND o.Status IS DISTINCT FROM 'Completed' AND NOT o.ObserverSigned AND NOT o.ObserveeSigned)
   )
 ORDER BY planned, o.ObservationID
 """
@@ -241,7 +244,9 @@ def get_kpis(cycle_id: int | None = Query(default=None, description="Defaults to
         status_rows = conn.execute(text(STATUS_COUNTS_SQL)).mappings().all()
         facts = conn.execute(text(CYCLE_FACTS_SQL), {"cycle_id": cid}).mappings().first()
         participation = conn.execute(text(PARTICIPATION_SQL), {"cycle_id": cid}).mappings().first()
-        missing = conn.execute(text(MISSING_SQL), {"cycle_id": cid, "today": today}).mappings().all()
+        missing = conn.execute(
+            text(MISSING_SQL), {"cycle_id": cid, "past_deadline": today > cycle["observationdeadline"]}
+        ).mappings().all()
         full_process = conn.execute(text(FULL_PROCESS_SQL), {"cycle_id": cid}).scalar_one()
         accuracy = eligibility_accuracy(conn, cid)
 
@@ -250,6 +255,9 @@ def get_kpis(cycle_id: int | None = Query(default=None, description="Defaults to
         "cycle_id": cid,
         "semester": cycle["semester"],
         "year": cycle["yearnum"],
+        # Process doc: KPIs are generated after the feedback deadline.
+        "final": today > cycle["postobservationfeedbackdeadline"],
+        "feedback_deadline": cycle["postobservationfeedbackdeadline"].isoformat(),
         "evaluation_eligibility_accuracy": accuracy,
         "overdue_evaluation_count": {"count": overdue},
         "assessment_participation_rate": {
