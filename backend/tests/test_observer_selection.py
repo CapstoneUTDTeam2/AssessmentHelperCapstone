@@ -273,3 +273,43 @@ def test_signup_rejects_bad_preferred_dates(client, days_from_today, weekday, me
     assert response.status_code == 400
     assert message in response.json()["detail"]
     assert client.get("/api/observees/5/signup").status_code == 404
+
+
+# The committee's signup view reads what is saved, without matching again.
+
+def _signup_view(client, signup_id):
+    response = client.get("/api/observer-selection/signups")
+    assert response.status_code == 200
+    return next(s for s in response.json()["signups"] if s["signup_id"] == signup_id)
+
+
+def test_signup_view_shows_pending_before_selection(client, fresh_signups):
+    signup = _signup_view(client, 3)
+    assert signup["status"] == "Pending"
+    assert signup["observers"] == []
+
+
+def test_signup_view_has_the_details_the_committee_needs(client, fresh_signups):
+    signup = _signup_view(client, 3)
+    assert signup["course_code"] and signup["section_name"] == "001"
+    assert (signup["meeting_days"], signup["start_time"], signup["end_time"]) == ("MW", "13:00", "14:15")
+    assert signup["professor_name"] == "Carol Williams"
+    assert signup["professor_email"]
+
+
+def test_signup_view_returns_the_saved_list_every_time(client, after_signup_deadline):
+    _add_math_observers(7)
+    started = client.post("/api/observer-selection/start").json()
+    saved = {s["signup_id"]: s["observers"] for s in started["signups"]}
+    assert any(len(observers) == 5 for observers in saved.values())
+    for _ in range(3):
+        for signup_id, observers in saved.items():
+            view = _signup_view(client, signup_id)
+            assert sorted(o["observer_id"] for o in view["observers"]) == sorted(o["observer_id"] for o in observers)
+
+
+def test_signup_view_writes_nothing(client, after_signup_deadline):
+    client.post("/api/observer-selection/start")
+    before = _statuses()
+    _signup_view(client, 3)
+    assert _statuses() == before

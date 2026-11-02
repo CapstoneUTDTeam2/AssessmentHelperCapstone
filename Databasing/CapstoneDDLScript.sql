@@ -274,6 +274,8 @@ CREATE TABLE Observation (
     Notes Text,
     ObserveeID INT NOT NULL,
     ObservationTime TIME,
+    -- Why the observee reported that this observation could not happen (Status 'Not Held')
+    NotHeldReason TEXT,
     foreign key (ObserverProfessorID) references Professors(ProfessorID),
     foreign key (SignupID) references ObservationSignup(SignupID),
     foreign key (ObserveeID) references Professors(ProfessorID),
@@ -664,6 +666,8 @@ CREATE TABLE ObservationCriterionRating (
     Rating INT,
         CONSTRAINT valid_rating_range CHECK (Rating BETWEEN 1 AND 6),
     Comments TEXT,
+    -- The observee's response to this rating, written before they sign
+    ObserveeComment TEXT,
     PRIMARY KEY (ObservationID, CriterionID),
     FOREIGN KEY (ObservationID) REFERENCES Observation(ObservationID),
     FOREIGN KEY (CriterionID, TemplateID) REFERENCES EvaluationCriterion(CriterionID, TemplateID)
@@ -970,6 +974,35 @@ CREATE TABLE SignupObserverList (
         REFERENCES Professors(ProfessorID)
 );
 
+-- MeetingDays holds letters ("TR") or CourseBook names ("Tuesday,Thursday").
+-- This returns letters for both: M T W R F, S for Saturday. NULL becomes ''.
+-- Same rule as parse_days in the backend.
+CREATE OR REPLACE FUNCTION meeting_day_letters(
+    p_days TEXT
+)
+RETURNS TEXT
+LANGUAGE sql
+IMMUTABLE
+AS $$
+    SELECT CASE
+        WHEN UPPER(TRIM(COALESCE(p_days, ''))) ~ '^[MTWRF]*$'
+            THEN UPPER(TRIM(COALESCE(p_days, '')))
+        ELSE (
+            SELECT COALESCE(STRING_AGG(
+                CASE
+                    WHEN token LIKE 'MON%' THEN 'M'
+                    WHEN token LIKE 'TU%' THEN 'T'
+                    WHEN token LIKE 'WED%' THEN 'W'
+                    WHEN token LIKE 'TH%' THEN 'R'
+                    WHEN token LIKE 'FRI%' THEN 'F'
+                    WHEN token LIKE 'SAT%' THEN 'S'
+                END, ''
+            ), '')
+            FROM REGEXP_SPLIT_TO_TABLE(UPPER(p_days), '[^A-Z]+') AS token
+        )
+    END;
+$$;
+
 --For each potential observer:
 -- 1. Same department, not the observee.
 -- 2. Taught the same course level within four Fall/Spring semesters.
@@ -1105,7 +1138,7 @@ AS $$
 
               -- Date must match the class's meeting day
               AND POSITION(
-                  weekday.DayLetter IN t.MeetingDays
+                  weekday.DayLetter IN meeting_day_letters(t.MeetingDays)
               ) > 0
 
               -- Observer's hours must cover the class
@@ -1134,7 +1167,7 @@ AS $$
 
                     -- Same weekday
                     AND POSITION(
-                        weekday.DayLetter IN s.MeetingDays
+                        weekday.DayLetter IN meeting_day_letters(s.MeetingDays)
                     ) > 0
 
                     -- Overlapping time
@@ -1147,23 +1180,7 @@ AS $$
     -- Target class needs a valid schedule
     AND NULLIF(TRIM(t.MeetingDays), '') IS NOT NULL
     AND t.StartTime IS NOT NULL
-    AND t.EndTime IS NOT NULL
-
-    -- Candidate observer cannot have incomplete
-    -- teaching schedules in this evaluation term
-    AND NOT EXISTS (
-        SELECT 1
-        FROM TeachingAssignment ta
-        JOIN Sections s
-            ON s.SectionID = ta.SectionID
-        WHERE ta.ProfessorID = p.ProfessorID
-        AND s.TermID = t.TermID
-        AND (
-            NULLIF(TRIM(s.MeetingDays), '') IS NULL
-            OR s.StartTime IS NULL
-            OR s.EndTime IS NULL
-        )
-    );
+    AND t.EndTime IS NOT NULL;
 
 $$;
 

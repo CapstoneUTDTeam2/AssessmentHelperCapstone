@@ -7,10 +7,8 @@ import { formatPercent, getExecutiveDashboard, getKpis } from './kpis'
 import type { ExecutiveDashboard, Kpis } from './kpis'
 import { listObservations } from './observations'
 import type { ObservationSummary } from './observations'
-import { getObserverAlerts, startObserverSelection, notifyObservees } from './observerSelection'
-import type { ObserverAlert, ObserverSelectionResult } from './observerSelection'
-import { listSignupMatches } from './signups'
-import type { SignupMatchList } from './signups'
+import { getObserverAlerts, getSelectionSignups, startObserverSelection, notifyObservees } from './observerSelection'
+import type { ObserverAlert, ObserverSelectionResult, SelectionSignupList } from './observerSelection'
 
 const HIRE_LEVELS: Record<string, HireLevel> = {
   'Assistant Professor': 'Assistant',
@@ -29,7 +27,7 @@ export interface CommitteeOverview {
   overdue: ProfessorEvaluationStatus[]
   alerts: ObserverAlert[]
   noMatchCount: number
-  signups: SignupMatchList | null
+  signups: SelectionSignupList | null
   rows: EvaluationRow[]
   /** Null when GET /api/kpis failed. */
   kpis: Kpis | null
@@ -67,6 +65,7 @@ function toRow(
   row.session = `${observation.course_code}.${observation.section_name}${date ? ` · ${date}` : ''}`
   if (date) row.due = date
   if (observation.status === 'Completed') row.status = 'Completed'
+  else if (observation.not_held) row.status = 'Not held'
   else if (date && date < today) row.status = 'Report overdue'
   else row.status = 'Confirmed'
   return row
@@ -78,7 +77,7 @@ export async function getCommitteeOverview(signal?: AbortSignal): Promise<Commit
     getOverdueProfessors(signal),
     getObserverAlerts(signal).catch(() => null),
     getCurrentCycle(signal).catch(() => null),
-    listSignupMatches(signal).catch(() => null),
+    getSelectionSignups(signal).catch(() => null),
     listObservations(undefined, signal).catch(() => null),
     getKpis(undefined, signal).catch(() => null),
     getExecutiveDashboard(undefined, signal).catch(() => null),

@@ -9,7 +9,7 @@ import { getUnmatchedFaculty } from './kpis'
 import { listObservations } from './observations'
 import type { ObservationSummary } from './observations'
 
-export type ReportStatus = 'Scheduled' | 'Awaiting sign-off' | 'Signed off' | 'Report overdue' | 'No report'
+export type ReportStatus = 'Scheduled' | 'Awaiting sign-off' | 'Signed off' | 'Report overdue' | 'No report' | 'Not held'
 
 export interface ReportRow {
   /** Row key: observation id, or `u<signup id>` for a signup with no observer. */
@@ -33,6 +33,7 @@ export interface ReportRow {
 
 function reportStatus(o: ObservationSummary, today: string): ReportStatus {
   if (o.status === 'Completed') return 'Signed off'
+  if (o.not_held) return 'Not held'
   if (!o.observation_date || o.observation_date > today) return 'Scheduled'
   // The observation date passed: one signature means the form is filled in and waiting on the other person.
   return o.observer_signed || o.observee_signed ? 'Awaiting sign-off' : 'Report overdue'

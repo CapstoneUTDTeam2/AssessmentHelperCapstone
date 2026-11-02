@@ -6,7 +6,13 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from app.api.cycle_deadlines import campus_now, require_before_deadline, resolve_cycle
-from app.api.observer_matching import observers_for_signup_id, parse_days
+from app.api.observer_matching import (
+    ASSUMED_SIGNUP_DAYS,
+    ASSUMED_SIGNUP_END,
+    ASSUMED_SIGNUP_START,
+    observers_for_signup_id,
+    parse_days,
+)
 from app.api.observer_selection import has_saved_list, saved_observers
 from app.db import engine
 
@@ -76,8 +82,15 @@ SELECT {SIGNUP_COLUMNS}
 WHERE os.SignupID = :signup_id
 """
 
-# SignupID has no default in the DDL.
-NEXT_SIGNUP_ID_SQL = "SELECT COALESCE(MAX(SignupID), 0) + 1 AS next_id FROM ObservationSignup"
+# SignupID has no default in the DDL. Include leftover child rows so a tester
+# reset that skipped ON DELETE CASCADE cannot reuse an occupied id.
+NEXT_SIGNUP_ID_SQL = """
+SELECT GREATEST(
+    COALESCE((SELECT MAX(SignupID) FROM ObservationSignup), 0),
+    COALESCE((SELECT MAX(SignupID) FROM SignupPreferredDate), 0),
+    COALESCE((SELECT MAX(SignupID) FROM SignupObserverList), 0)
+) + 1 AS next_id
+"""
 
 # Stops two signups at the same time from both getting through.
 LOCK_SIGNUPS_SQL = "LOCK TABLE ObservationSignup IN SHARE ROW EXCLUSIVE MODE"
@@ -103,6 +116,17 @@ ENROLL_OBSERVER_SQL = """
 INSERT INTO ObserverEnrollment (ProfessorID, CycleID)
 VALUES (:professor_id, :cycle_id)
 ON CONFLICT (ProfessorID, CycleID) DO NOTHING
+"""
+
+# Matching needs weekly hours, so assume default hours until the professor edits them.
+DEFAULT_AVAILABILITY_SQL = """
+INSERT INTO ObserverAvailability (ProfessorID, CycleID, Weekday, StartTime, EndTime)
+SELECT :professor_id, :cycle_id, day, :start_time, :end_time
+FROM unnest(CAST(:days AS text[])) AS day
+WHERE NOT EXISTS (
+    SELECT 1 FROM ObserverAvailability
+    WHERE ProfessorID = :professor_id AND CycleID = :cycle_id
+)
 """
 
 # AHC-227: the pool is everyone who signed up or is actively enrolled as an observer this cycle.
@@ -187,7 +211,7 @@ def _require_professor(conn, professor_id):
 
 
 # Python weekday() to the meeting-day letters the Sections table uses.
-WEEKDAY_LETTERS = {0: "M", 1: "T", 2: "W", 3: "R", 4: "F"}
+WEEKDAY_LETTERS = {0: "M", 1: "T", 2: "W", 3: "R", 4: "F", 5: "S"}
 
 
 def _check_preferred_dates(dates, section, cycle, today):
@@ -292,6 +316,16 @@ def create_signup(request: SignupRequest):
             conn.execute(
                 text(ENROLL_OBSERVER_SQL),
                 {"professor_id": request.professor_id, "cycle_id": cycle["cycleid"]},
+            )
+            conn.execute(
+                text(DEFAULT_AVAILABILITY_SQL),
+                {
+                    "professor_id": request.professor_id,
+                    "cycle_id": cycle["cycleid"],
+                    "days": list(ASSUMED_SIGNUP_DAYS),
+                    "start_time": ASSUMED_SIGNUP_START,
+                    "end_time": ASSUMED_SIGNUP_END,
+                },
             )
             created = conn.execute(
                 text(SIGNUP_BY_ID_SQL), {"signup_id": signup_id}

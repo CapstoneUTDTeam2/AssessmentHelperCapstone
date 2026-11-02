@@ -64,9 +64,9 @@ function toCurrentCourse(row: ObserveeClass, received: ProfessorObservation[]): 
     course: row.course_code,
     title: row.course_name,
     section: row.section_name,
-    days: row.meeting_days,
-    start: row.start_time,
-    end: row.end_time,
+    days: row.meeting_days ?? 'No set meeting time',
+    start: row.start_time ?? '',
+    end: row.end_time ?? '',
     observation: received.find((o) => o.section_id === row.section_id),
   }
 }
@@ -253,12 +253,12 @@ function CurrentCoursesCard({ courses, termLabel }: { courses: CurrentCourse[]; 
                   </td>
                   <td className="px-2 py-2 text-neutral-700">{c.section}</td>
                   <td className="px-2 py-2 whitespace-nowrap text-neutral-700">
-                    {formatMeetingDays(c.days)} {c.start}–{c.end}
+                    {formatMeetingDays(c.days)} {c.start && `${c.start}–${c.end}`}
                   </td>
                   <td className="px-2 py-2">
                     {observation?.observation_date ? (
                       <span className="rounded-full bg-[#e0791a] px-2 py-0.5 text-[9px] font-medium whitespace-nowrap text-white">
-                        {observation.locked ? 'Observed' : 'Scheduled'} {formatDay(observation.observation_date)}
+                        {observation.not_held ? 'Not held' : observation.locked ? 'Observed' : 'Scheduled'} {formatDay(observation.observation_date)}
                       </span>
                     ) : (
                       <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[9px] whitespace-nowrap text-neutral-600">

@@ -60,7 +60,7 @@ const byDate = (a: Session, b: Session) => (a.observation_date ?? '').localeComp
 
 /** What this professor still has to do on an observation that already happened. */
 function pendingAction(s: Session, today: string): 'fill' | 'sign' | null {
-  if (s.locked || !s.observation_date || s.observation_date > today || !s.needs_my_signature) return null
+  if (s.locked || s.not_held || !s.observation_date || s.observation_date > today || !s.needs_my_signature) return null
   // The observer fills in the form; the observee signs once the observer has.
   if (!s.observedYou) return 'fill'
   return s.observer_signed ? 'sign' : null
@@ -73,7 +73,7 @@ function TeacherEvaluationsPage({ navigate }: PageProps) {
   const today = cycle?.today ?? localToday()
 
   const sessions = sessionsOf(data)
-  const upcoming = sessions.filter((s) => (s.observation_date ?? '9999') >= today && !s.locked).sort(byDate)
+  const upcoming = sessions.filter((s) => (s.observation_date ?? '9999') >= today && !s.locked && !s.not_held).sort(byDate)
   const completed = sessions.filter((s) => !upcoming.includes(s)).sort((a, b) => byDate(b, a))
   const openReport = (id: number) => navigate('Observation Report', String(id))
   const reload = () => {
@@ -457,6 +457,8 @@ function RecentlyCompletedCard({
                     <span className="h-1.5 w-1.5 rounded-full bg-[#c4561a]" aria-hidden="true" />
                     Waiting for your signature
                   </p>
+                ) : s.not_held ? (
+                  <p className="mt-0.5 text-[10px] text-[#b3261e]">Reported as not happening</p>
                 ) : s.locked ? (
                   <p className="mt-0.5 text-[10px] text-[#3f8a55]">✓ Signed by both</p>
                 ) : (

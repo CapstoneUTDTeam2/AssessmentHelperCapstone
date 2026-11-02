@@ -6,6 +6,8 @@ This is the product process for Assessment Helper. If something is not written h
 
 The original PDF is `docs/READ-BEFORE-CHANGE.pdf` (same content; the PDF is not reliably machine-readable).
 
+**Team decision:** file upload is not required. This covers the Observee's upload about trouble during the observation and the Observer's upload of the signed observation below. Signatures are recorded in the system instead. This note overrides those two lines and the PDF.
+
 ---
 
 ## Evaluation Cycle

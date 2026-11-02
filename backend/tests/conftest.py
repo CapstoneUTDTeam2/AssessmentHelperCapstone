@@ -76,7 +76,8 @@ def fresh_signups(client):
 
     with psycopg.connect(_raw_conninfo(TEST_DATABASE_URL), autocommit=True) as conn:
         today = conn.execute("SELECT (now() AT TIME ZONE 'America/Chicago')::date").fetchone()[0]
-        monday, wednesday = _next_weekday(today, 0), _next_weekday(today, 2)
+        monday = _next_weekday(today, 0)
+        wednesday = monday + timedelta(days=2)
         conn.execute("DELETE FROM Observation WHERE SignupID IN (3, 4)")
         conn.execute("DELETE FROM ObserverRequest WHERE SignupID IN (3, 4)")
         conn.execute("DELETE FROM SignupPreferredDate WHERE SignupID IN (3, 4)")

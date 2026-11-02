@@ -6,9 +6,10 @@ export interface ObserveeClass {
   course_name: string
   section_id: number
   section_name: string
-  meeting_days: string
-  start_time: string
-  end_time: string
+  /** Null for sections CourseBook lists without a meeting time, e.g. independent study. */
+  meeting_days: string | null
+  start_time: string | null
+  end_time: string | null
 }
 
 export interface ObserveeClassesResponse {

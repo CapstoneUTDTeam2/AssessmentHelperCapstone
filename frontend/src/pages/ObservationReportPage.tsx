@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ApiError } from '../api/client'
-import { getObservation, NOT_APPLICABLE, saveRatings, signObservation } from '../api/observations'
+import {
+  getObservation,
+  NOT_APPLICABLE,
+  reportNotHeld,
+  saveObserveeComments,
+  saveRatings,
+  signObservation,
+} from '../api/observations'
 import type { ObservationCriterion, ObservationReport, RatingOption } from '../api/observations'
 import { getTemplate } from '../api/templates'
 import type { TemplateSection } from '../api/templates'
@@ -119,6 +126,7 @@ function ObservationReportPage({ navigate, param }: PageProps) {
 interface Draft {
   ratings: Record<number, number | null>
   comments: Record<number, string>
+  observeeComments: Record<number, string>
   summary: string
 }
 
@@ -126,6 +134,7 @@ function draftFrom(report: ObservationReport): Draft {
   return {
     ratings: Object.fromEntries(report.criteria.map((c) => [c.criterion_id, c.rating])),
     comments: Object.fromEntries(report.criteria.map((c) => [c.criterion_id, c.comment ?? ''])),
+    observeeComments: Object.fromEntries(report.criteria.map((c) => [c.criterion_id, c.observee_comment ?? ''])),
     summary: report.summary ?? '',
   }
 }
@@ -153,13 +162,19 @@ function Report({
   const [busy, setBusy] = useState(false)
   const [savedAt, setSavedAt] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [reporting, setReporting] = useState(false)
+  const [notHeldReason, setNotHeldReason] = useState('')
 
   const anySigned = report.observer_signed || report.observee_signed
   // The backend locks ratings once anyone signs.
-  const editable = role === 'observer' && !anySigned && !report.locked
+  const editable = role === 'observer' && !anySigned && !report.locked && !report.not_held
   const mySignature = role === 'observer' ? report.observer_signed : role === 'observee' ? report.observee_signed : true
-  const canSign = role !== 'viewer' && !mySignature && !report.locked
+  const canSign = role !== 'viewer' && !mySignature && !report.locked && !report.not_held
+  // Signatures mean the observation happened, so it can only be reported before anyone signs.
+  const canReportNotHeld = role === 'observee' && !anySigned && !report.locked && !report.not_held
   const happened = report.observation_date !== null && report.observation_date <= todayIso()
+  // The observee reviews the finished form and can respond to each rating until they sign.
+  const canComment = role === 'observee' && canSign && happened && report.missing.length === 0
   const groups = groupCriteria(report.criteria, sections)
   const criteria = groups.flatMap((g) => g.criteria)
   const ratedCount = criteria.filter((c) => draft.ratings[c.criterion_id] != null).length
@@ -190,11 +205,23 @@ function Report({
     summary: draft.summary,
   })
 
+  const observeeCommentsBody = () => ({
+    observee_id: professorId!,
+    comments: criteria.map((c) => ({
+      criterion_id: c.criterion_id,
+      comment: draft.observeeComments[c.criterion_id]?.trim() || null,
+    })),
+  })
+
   const saveDraft = async () => {
     setBusy(true)
     setError(null)
     try {
-      onChange(await saveRatings(report.observation_id, ratingsBody()))
+      onChange(
+        await (canComment
+          ? saveObserveeComments(report.observation_id, observeeCommentsBody())
+          : saveRatings(report.observation_id, ratingsBody())),
+      )
       setSavedAt(new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))
     } catch (err) {
       setError(errorText(err, 'Saving failed'))
@@ -213,10 +240,24 @@ function Report({
     setError(null)
     try {
       if (editable) await saveRatings(report.observation_id, ratingsBody())
+      if (canComment) await saveObserveeComments(report.observation_id, observeeCommentsBody())
       onChange(await signObservation(report.observation_id, professorId!))
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (err) {
       setError(errorText(err, 'Signing failed'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const submitNotHeld = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      onChange(await reportNotHeld(report.observation_id, { observee_id: professorId!, reason: notHeldReason.trim() }))
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch (err) {
+      setError(errorText(err, 'Reporting failed'))
     } finally {
       setBusy(false)
     }
@@ -250,7 +291,7 @@ function Report({
             {time}
           </p>
         </div>
-        {editable && (
+        {(editable || canComment) && (
           <div className="flex items-center gap-2">
             {savedAt && <span className="text-[11px] text-neutral-500">Saved at {savedAt}</span>}
             <button
@@ -259,7 +300,7 @@ function Report({
               disabled={busy}
               className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 transition-colors hover:bg-neutral-50 disabled:opacity-60"
             >
-              Save draft
+              {canComment ? 'Save comments' : 'Save draft'}
             </button>
             <button
               type="button"
@@ -281,6 +322,15 @@ function Report({
 
       <Steps steps={steps} current={step} />
 
+      {report.not_held && (
+        <div role="status" className="mt-4 rounded-lg bg-[#fde8e6] px-4 py-3 text-xs text-[#b3261e]">
+          <p className="font-medium">Reported as not happening</p>
+          <p className="mt-0.5 text-[11px]">
+            {report.observee_name} reported that this observation could not happen: {report.not_held_reason}
+          </p>
+        </div>
+      )}
+
       {report.locked ? (
         <div className="mt-4 rounded-lg bg-[#e3efe6] px-4 py-3 text-xs text-[#1c4532]">
           <p className="font-medium">Signed by both · report complete</p>
@@ -298,6 +348,16 @@ function Report({
             </p>
           </div>
         )
+      )}
+
+      {canComment && (
+        <div className="mt-4 rounded-lg bg-[#fdf1e6] px-4 py-3 text-xs text-[#8a3d12]">
+          <p className="font-medium">Review your ratings before you sign</p>
+          <p className="mt-0.5 text-[11px]">
+            Add a comment to any rating you want to respond to. Your comments stay on the report and can’t change after you
+            sign.
+          </p>
+        </div>
       )}
 
       <div className="mt-4 flex flex-col gap-4">
@@ -361,6 +421,11 @@ function Report({
                       scale={report.rating_scale}
                       rating={draft.ratings[c.criterion_id] ?? null}
                       comment={draft.comments[c.criterion_id] ?? ''}
+                      observeeComment={draft.observeeComments[c.criterion_id] ?? ''}
+                      canComment={canComment}
+                      onObserveeComment={(value) =>
+                        setDraft((d) => ({ ...d, observeeComments: { ...d.observeeComments, [c.criterion_id]: value } }))
+                      }
                       locked={!editable}
                       missingRating={showErrors && editable && missingRating(c)}
                       missingComment={showErrors && editable && needsComment(c)}
@@ -404,7 +469,7 @@ function Report({
             <SignerCard
               role="Faculty observed"
               name={you(report.observee_name, report.observee_id)}
-              detail={report.observee_signed ? 'Signed' : 'Reviews the form, then signs'}
+              detail={report.observee_signed ? 'Signed' : 'Reviews the form, can comment, then signs'}
               status={report.observee_signed ? 'Signed' : 'Not signed'}
               active={role === 'observee' && canSign}
             />
@@ -446,6 +511,55 @@ function Report({
             </>
           )}
         </section>
+
+        {canReportNotHeld && (
+          <section className={card}>
+            <h2 className="text-sm font-semibold text-neutral-900">Observation couldn’t happen?</h2>
+            <p className="mt-0.5 text-[11px] text-neutral-500">
+              Use this only if the observation could not take place this cycle. It closes this report, can’t be undone, and
+              is counted as a missing observation.
+            </p>
+            {reporting ? (
+              <>
+                <Field label="What happened?" className="mt-3">
+                  <textarea
+                    rows={3}
+                    value={notHeldReason}
+                    onChange={(e) => setNotHeldReason(e.target.value)}
+                    placeholder="Why the observation could not happen…"
+                    className={input}
+                  />
+                </Field>
+                <div className="mt-3 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setReporting(false)}
+                    disabled={busy}
+                    className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 hover:bg-neutral-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={submitNotHeld}
+                    disabled={busy || !notHeldReason.trim()}
+                    className="rounded-md bg-[#b3261e] px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+                  >
+                    Submit report
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setReporting(true)}
+                className="mt-3 rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-[#b3261e] hover:bg-neutral-50"
+              >
+                Report that it didn’t happen
+              </button>
+            )}
+          </section>
+        )}
       </div>
     </main>
   )
@@ -487,22 +601,28 @@ function CriterionRow({
   scale,
   rating,
   comment,
+  observeeComment,
+  canComment,
   locked,
   missingRating,
   missingComment,
   onRate,
   onComment,
+  onObserveeComment,
 }: {
   number: number
   criterion: ObservationCriterion
   scale: RatingOption[]
   rating: number | null
   comment: string
+  observeeComment: string
+  canComment: boolean
   locked: boolean
   missingRating: boolean
   missingComment: boolean
   onRate: (r: number) => void
   onComment: (value: string) => void
+  onObserveeComment: (value: string) => void
 }) {
   const [notesOpen, setNotesOpen] = useState(Boolean(comment))
   const commentRequired = criterion.notes_on_low_rating && rating !== null && LOW_RATINGS.includes(rating)
@@ -579,6 +699,18 @@ function CriterionRow({
               + Add comments
             </button>
           )
+        )}
+        {(canComment || observeeComment) && (
+          <Field label="Observee comment" className="mt-2">
+            <textarea
+              rows={2}
+              readOnly={!canComment}
+              value={observeeComment}
+              onChange={(e) => onObserveeComment(e.target.value)}
+              placeholder="Your response to this rating…"
+              className={input}
+            />
+          </Field>
         )}
       </div>
     </li>

@@ -38,6 +38,9 @@ export interface ObservationSummary {
   observee_signed: boolean
   /** True once both signed; the database rejects further changes. */
   locked: boolean
+  /** True when the observee reported that the observation could not happen. */
+  not_held: boolean
+  not_held_reason: string | null
   completed_at: string | null
 }
 
@@ -53,6 +56,8 @@ export interface ObservationCriterion {
   rating: number | null
   not_applicable: boolean
   comment: string | null
+  /** The observee's response to this rating, written before they sign. */
+  observee_comment: string | null
 }
 
 export interface ObservationReport extends ObservationSummary {
@@ -101,6 +106,20 @@ export function saveRatings(
   signal?: AbortSignal,
 ) {
   return apiPut<ObservationReport>(`/api/observations/${observationId}/ratings`, body, undefined, signal)
+}
+
+/** Observee only. Throws ApiError 409 once anyone has signed. */
+export function reportNotHeld(observationId: number, body: { observee_id: number; reason: string }, signal?: AbortSignal) {
+  return apiPost<ObservationReport>(`/api/observations/${observationId}/not-held`, body, undefined, signal)
+}
+
+/** Observee only. Throws ApiError 409 once they have signed. */
+export function saveObserveeComments(
+  observationId: number,
+  body: { observee_id: number; comments: { criterion_id: number; comment: string | null }[] },
+  signal?: AbortSignal,
+) {
+  return apiPut<ObservationReport>(`/api/observations/${observationId}/observee-comments`, body, undefined, signal)
 }
 
 /** Observer or observee. Throws ApiError 400 before the date or while `missing` isn't empty. */

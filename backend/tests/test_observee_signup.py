@@ -137,3 +137,21 @@ def test_observer_pool_includes_department_and_course_levels(client):
 
 def test_observer_pool_for_other_cycle_is_separate(client):
     assert _pool_ids(client, cycle_id=1) == []
+
+
+def test_signup_assumes_default_availability(client):
+    assert client.post("/api/signups", json={"professor_id": 5, "section_id": 6}).status_code == 201
+    weekly = client.get("/api/observers/5/availability").json()["weekly"]
+    assert [slot["weekday"] for slot in weekly] == ["M", "T", "W", "R", "F"]
+    assert (weekly[0]["start_time"], weekly[0]["end_time"]) == ("08:00", "19:00")
+
+
+def test_signup_keeps_availability_already_entered(client):
+    edited = client.put(
+        "/api/observers/5/availability",
+        json={"weekly": [{"weekday": "T", "start_time": "09:00", "end_time": "12:00"}]},
+    )
+    assert edited.status_code == 200
+    assert client.post("/api/signups", json={"professor_id": 5, "section_id": 6}).status_code == 201
+    weekly = client.get("/api/observers/5/availability").json()["weekly"]
+    assert [slot["weekday"] for slot in weekly] == ["T"]

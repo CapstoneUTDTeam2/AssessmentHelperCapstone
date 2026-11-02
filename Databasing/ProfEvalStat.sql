@@ -1,10 +1,28 @@
 -- AHC-218 Add view for due and overdue professor evaluations
--- This just creates the view
+-- This creates the status function and the view built on it
 -- Evaluation frequency (SRS 6.2):
 -- Assistant professors: annually.
 -- Associate and full professors: every two years.
 
-CREATE OR REPLACE VIEW ProfessorEvaluationStatus AS
+-- Pass a cycle to ignore its observations. That gives each professor's status
+-- before that cycle's evaluations finished, which KPI 2.1 needs.
+CREATE OR REPLACE FUNCTION professor_evaluation_status(
+    p_ignore_cycle_id INT DEFAULT NULL
+)
+RETURNS TABLE (
+    ProfessorID INT,
+    ProfessorName VARCHAR,
+    CurrentLevel VARCHAR,
+    StartTermID INT,
+    LastEvaluationDate DATE,
+    FrequencyYears INT,
+    NextDueYear INT,
+    NextDueSemester TEXT,
+    EvaluationStatus TEXT
+)
+LANGUAGE sql
+STABLE
+AS $$
 
 WITH CurrentCycle AS (
     SELECT
@@ -29,6 +47,12 @@ LastEvaluation AS (
     FROM Observation o
     WHERE o.Status = 'Completed'
       AND o.CompletedDate IS NOT NULL
+      AND NOT EXISTS (
+          SELECT 1
+          FROM ObservationSignup os
+          WHERE os.SignupID = o.SignupID
+            AND os.CycleID = p_ignore_cycle_id
+      )
     GROUP BY o.ObserveeID
 ),
 
@@ -118,3 +142,18 @@ SELECT
 
 FROM DueTerms dt
 CROSS JOIN CurrentCycle cc;
+
+$$;
+
+CREATE OR REPLACE VIEW ProfessorEvaluationStatus AS
+SELECT
+    s.ProfessorID,
+    s.ProfessorName::VARCHAR(50) AS ProfessorName,
+    s.CurrentLevel::VARCHAR(30) AS CurrentLevel,
+    s.StartTermID,
+    s.LastEvaluationDate,
+    s.FrequencyYears,
+    s.NextDueYear,
+    s.NextDueSemester,
+    s.EvaluationStatus
+FROM professor_evaluation_status() s;

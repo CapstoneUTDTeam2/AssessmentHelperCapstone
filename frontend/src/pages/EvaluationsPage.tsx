@@ -62,6 +62,7 @@ const COMPLETION: { label: string; statuses: EvaluationStatus[] }[] = [
   { label: 'Completed', statuses: ['Completed'] },
   { label: 'Scheduled', statuses: ['Confirmed'] },
   { label: 'Report overdue', statuses: ['Report overdue'] },
+  { label: 'Not held', statuses: ['Not held'] },
   { label: 'No observer yet', statuses: ['Pending', 'Overdue'] },
   { label: 'Unmatched', statuses: ['Unmatched'] },
 ]

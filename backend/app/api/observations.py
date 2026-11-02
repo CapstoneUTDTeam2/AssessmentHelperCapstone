@@ -14,11 +14,15 @@ router = APIRouter(prefix="/api", tags=["observations"])
 NOT_APPLICABLE = 6
 LOW_RATINGS = (1, 2)
 STATUS_COMPLETED = "Completed"
+# The observee reported that the observation could not happen this cycle.
+STATUS_NOT_HELD = "Not Held"
+NOT_HELD_MESSAGE = "This observation was reported as not happening"
+CLOSED_STATUSES = (STATUS_COMPLETED, STATUS_NOT_HELD)
 
 OBSERVATION_COLUMNS = """
     o.observationid, o.signupid, o.observationdate, o.scheduleddate, o.scheduledtime,
     o.completeddate, o.completedtime, o.status, o.notes, o.templateid,
-    o.observersigned, o.observeesigned,
+    o.observersigned, o.observeesigned, o.notheldreason,
     o.observerprofessorid, obs.professorname AS observername,
     o.observeeid, ee.professorname AS observeename, ee.currentlevel AS observeelevel,
     os.cycleid, at.semester, at.yearnum,
@@ -55,7 +59,7 @@ SELECT
     ec.criterionid, ec.criterionname, ec.description, ec.sectionid, ec.displayorder,
     ec.isactive, ec.isrequired, ec.notesonlowrating,
     ARRAY(SELECT b.BulletText FROM EvaluationCriterionBullet b WHERE b.CriterionID = ec.CriterionID ORDER BY b.BulletOrder) AS bullets,
-    r.rating, r.comments
+    r.rating, r.comments, r.observeecomment
 FROM Observation o
 JOIN EvaluationCriterion ec ON ec.TemplateID = o.TemplateID
 LEFT JOIN ObservationCriterionRating r ON r.ObservationID = o.ObservationID AND r.CriterionID = ec.CriterionID
@@ -71,7 +75,14 @@ VALUES (:observation_id, :criterion_id, :template_id, :rating, :comment)
 ON CONFLICT (ObservationID, CriterionID)
 DO UPDATE SET Rating = EXCLUDED.Rating, Comments = EXCLUDED.Comments
 """
+UPSERT_OBSERVEE_COMMENT_SQL = """
+INSERT INTO ObservationCriterionRating (ObservationID, CriterionID, TemplateID, ObserveeComment)
+VALUES (:observation_id, :criterion_id, :template_id, :comment)
+ON CONFLICT (ObservationID, CriterionID)
+DO UPDATE SET ObserveeComment = EXCLUDED.ObserveeComment
+"""
 UPDATE_NOTES_SQL = "UPDATE Observation SET Notes = :notes WHERE ObservationID = :observation_id"
+NOT_HELD_SQL = "UPDATE Observation SET Status = 'Not Held', NotHeldReason = :reason WHERE ObservationID = :observation_id"
 SIGN_OBSERVER_SQL = "UPDATE Observation SET ObserverSigned = TRUE WHERE ObservationID = :observation_id"
 SIGN_OBSERVEE_SQL = "UPDATE Observation SET ObserveeSigned = TRUE WHERE ObservationID = :observation_id"
 COMPLETE_SQL = """
@@ -92,6 +103,21 @@ class RatingsBody(BaseModel):
     observer_id: int
     ratings: list[RatingEntry] = []
     summary: str | None = None
+
+
+class ObserveeCommentEntry(BaseModel):
+    criterion_id: int
+    comment: str | None = None
+
+
+class ObserveeCommentsBody(BaseModel):
+    observee_id: int
+    comments: list[ObserveeCommentEntry] = []
+
+
+class NotHeldBody(BaseModel):
+    observee_id: int
+    reason: str
 
 
 class SignBody(BaseModel):
@@ -144,6 +170,8 @@ def _summary_payload(row):
         "observer_signed": row["observersigned"],
         "observee_signed": row["observeesigned"],
         "locked": row["status"] == STATUS_COMPLETED,
+        "not_held": row["status"] == STATUS_NOT_HELD,
+        "not_held_reason": row["notheldreason"],
         "completed_at": completed,
     }
 
@@ -162,6 +190,7 @@ def _criteria(conn, observation_id):
             "rating": r["rating"],
             "not_applicable": r["rating"] == NOT_APPLICABLE,
             "comment": r["comments"],
+            "observee_comment": r["observeecomment"],
         }
         for r in rows
     ]
@@ -236,10 +265,10 @@ def list_professor_observations(professor_id: int):
     for row in rows:
         item = _summary_payload(row)
         if row["observeeid"] == professor_id:
-            item["needs_my_signature"] = item["status"] != STATUS_COMPLETED and not row["observeesigned"]
+            item["needs_my_signature"] = item["status"] not in CLOSED_STATUSES and not row["observeesigned"]
             received.append(item)
         else:
-            item["needs_my_signature"] = item["status"] != STATUS_COMPLETED and not row["observersigned"]
+            item["needs_my_signature"] = item["status"] not in CLOSED_STATUSES and not row["observersigned"]
             given.append(item)
     return {"professor_id": professor_id, "received": received, "given": given}
 
@@ -260,6 +289,8 @@ def save_ratings(observation_id: int, body: RatingsBody):
             row, report = _detail(conn, observation_id)
             if row["observerprofessorid"] != body.observer_id:
                 raise HTTPException(status_code=403, detail="Only the observer can fill in the form")
+            if row["status"] == STATUS_NOT_HELD:
+                raise HTTPException(status_code=409, detail=NOT_HELD_MESSAGE)
             if row["status"] == STATUS_COMPLETED:
                 raise HTTPException(status_code=409, detail="This observation is signed and locked")
             if row["observersigned"] or row["observeesigned"]:
@@ -286,6 +317,76 @@ def save_ratings(observation_id: int, body: RatingsBody):
         raise HTTPException(status_code=409, detail=_db_error(error))
 
 
+# What: the observee reports that the observation could not happen this cycle.
+@router.post("/observations/{observation_id}/not-held")
+def report_not_held(observation_id: int, body: NotHeldBody):
+    # Input: observee_id, reason
+    # Output: the report, now Not Held (409 once anyone has signed, since signatures mean it happened)
+    reason = body.reason.strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="Say why the observation could not happen")
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(LOCK_OBSERVATION_SQL), {"observation_id": observation_id})
+            row, _ = _detail(conn, observation_id)
+            if row["observeeid"] != body.observee_id:
+                raise HTTPException(status_code=403, detail="Only the observee can report this")
+            if row["status"] == STATUS_NOT_HELD:
+                raise HTTPException(status_code=409, detail=NOT_HELD_MESSAGE)
+            if row["status"] == STATUS_COMPLETED:
+                raise HTTPException(status_code=409, detail="This observation is signed and locked")
+            if row["observersigned"] or row["observeesigned"]:
+                raise HTTPException(status_code=409, detail="A signed observation can't be reported as not happening")
+            conn.execute(text(NOT_HELD_SQL), {"reason": reason, "observation_id": observation_id})
+            return _detail(conn, observation_id)[1]
+    except DBAPIError as error:
+        raise HTTPException(status_code=409, detail=_db_error(error))
+
+
+# What: the observee reviews the finished form and comments on the ratings before signing.
+@router.put("/observations/{observation_id}/observee-comments")
+def save_observee_comments(observation_id: int, body: ObserveeCommentsBody):
+    # Input: observee_id, comments [{criterion_id, comment}]
+    # Output: the updated report (409 once the observee has signed)
+    if len({e.criterion_id for e in body.comments}) != len(body.comments):
+        raise HTTPException(status_code=400, detail="Each criterion can only have one comment")
+    today = campus_now().date()
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(LOCK_OBSERVATION_SQL), {"observation_id": observation_id})
+            row, report = _detail(conn, observation_id)
+            if row["observeeid"] != body.observee_id:
+                raise HTTPException(status_code=403, detail="Only the observee can comment on the ratings")
+            if row["status"] == STATUS_NOT_HELD:
+                raise HTTPException(status_code=409, detail=NOT_HELD_MESSAGE)
+            if row["status"] == STATUS_COMPLETED:
+                raise HTTPException(status_code=409, detail="This observation is signed and locked")
+            if row["observeesigned"]:
+                raise HTTPException(status_code=409, detail="Comments can't change after you sign")
+            when = _observation_date(row)
+            if when is None or when > today:
+                raise HTTPException(status_code=400, detail="You can comment once the observation has happened")
+            if report["missing"]:
+                raise HTTPException(status_code=400, detail="The form isn't finished: " + "; ".join(report["missing"]))
+            valid = {c["criterion_id"] for c in report["criteria"]}
+            unknown = [e.criterion_id for e in body.comments if e.criterion_id not in valid]
+            if unknown:
+                raise HTTPException(status_code=400, detail=f"Criterion {unknown[0]} isn't on this observation's form")
+            for entry in body.comments:
+                conn.execute(
+                    text(UPSERT_OBSERVEE_COMMENT_SQL),
+                    {
+                        "observation_id": observation_id,
+                        "criterion_id": entry.criterion_id,
+                        "template_id": row["templateid"],
+                        "comment": (entry.comment or "").strip() or None,
+                    },
+                )
+            return _detail(conn, observation_id)[1]
+    except DBAPIError as error:
+        raise HTTPException(status_code=409, detail=_db_error(error))
+
+
 # What: the observer or observee signs the observation (AHC-283). Once both sign, it is Completed and locked.
 @router.post("/observations/{observation_id}/sign")
 def sign_observation(observation_id: int, body: SignBody):
@@ -296,6 +397,8 @@ def sign_observation(observation_id: int, body: SignBody):
         with engine.begin() as conn:
             conn.execute(text(LOCK_OBSERVATION_SQL), {"observation_id": observation_id})
             row, report = _detail(conn, observation_id)
+            if row["status"] == STATUS_NOT_HELD:
+                raise HTTPException(status_code=409, detail=NOT_HELD_MESSAGE)
             if row["status"] == STATUS_COMPLETED:
                 raise HTTPException(status_code=409, detail="This observation is already signed by both people")
             if body.professor_id == row["observerprofessorid"]:

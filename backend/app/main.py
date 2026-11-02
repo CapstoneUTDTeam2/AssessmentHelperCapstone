@@ -19,6 +19,7 @@ from app.api.surveys import router as surveys_router
 from app.api.kpis import router as kpis_router
 from app.api.auth import router as auth_router
 from app.api.observer_requests import router as observer_request_router
+from app.api.test_harness import router as test_harness_router
 from app.db import engine
 
 app = FastAPI(title="Assessment Helper API")
@@ -48,6 +49,7 @@ app.include_router(surveys_router)
 app.include_router(kpis_router)
 app.include_router(auth_router)
 app.include_router(cycle_deadlines_router)
+app.include_router(test_harness_router)
 
 
 @app.get("/health")

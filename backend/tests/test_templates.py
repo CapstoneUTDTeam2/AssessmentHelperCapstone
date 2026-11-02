@@ -10,23 +10,28 @@ def _db():
     return psycopg.connect(_raw_conninfo(TEST_DATABASE_URL), autocommit=True)
 
 
-# Sample data: template 1 (cycle 1) is unlocked, template 2 (cycle 2) is locked because
-# observations 1 and 2 were completed with it.
+# Sample data: template 1 (cycle 1) is unlocked, template 2 is an unused older version, and
+# template 3 (cycle 2) is locked because observations 1 and 2 were completed with it.
 
 
 def test_list_templates(client):
     templates = {t["template_id"]: t for t in client.get("/api/templates").json()["templates"]}
     assert templates[1]["is_locked"] is False
-    assert templates[2]["is_locked"] is True
-    assert templates[2]["cycle_ids"] == [2]
-    assert templates[2]["observation_count"] == 4
+    assert templates[3]["is_locked"] is True
+    assert templates[3]["version"] == "3.0"
+    assert templates[3]["cycle_ids"] == [2]
+    assert templates[3]["observation_count"] == 4
 
 
 def test_current_cycle_template(client):
     body = client.get("/api/templates/current").json()
     assert body["cycle_id"] == 2
-    assert body["template_id"] == 2
-    assert [c["name"] for c in body["criteria"]] == ["Organization", "Clarity", "Student Interaction"]
+    assert body["template_id"] == 3
+    assert len(body["criteria"]) == 9
+    assert [c["name"] for c in body["criteria"]][:2] == ["Lesson Structure", "Preparation and Materials"]
+    assert [s["name"] for s in body["sections"]] == ["Planning and Organization", "Teaching and Content", "Student Engagement"]
+    assert [c["is_required"] for c in body["criteria"]] == [True, False, True, True, True, False, True, False, True]
+    assert len(body["criteria"][0]["bullets"]) == 3
     assert [r["value"] for r in body["rating_scale"]] == [5, 4, 3, 2, 1, 6]
     organization = body["criteria"][0]
     assert organization["used_in"] == 2
@@ -38,12 +43,12 @@ def test_get_template_unknown(client):
 
 
 def test_locked_template_cannot_change(client):
-    add = client.post("/api/templates/2/criteria", json={"name": "Pacing"})
+    add = client.post("/api/templates/3/criteria", json={"name": "Pacing"})
     assert add.status_code == 409
     assert "locked" in add.json()["detail"]
-    assert client.put("/api/criteria/4", json={"name": "Structure"}).status_code == 409
-    assert client.delete("/api/criteria/4").status_code == 409
-    assert client.put("/api/templates/2", json={"version": "2.1"}).status_code == 409
+    assert client.put("/api/criteria/7", json={"name": "Structure"}).status_code == 409
+    assert client.delete("/api/criteria/7").status_code == 409
+    assert client.put("/api/templates/3", json={"version": "3.1"}).status_code == 409
 
 
 def test_add_edit_delete_criterion(client):

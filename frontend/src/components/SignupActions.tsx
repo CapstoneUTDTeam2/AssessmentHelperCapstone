@@ -23,9 +23,9 @@ export function SignupActions() {
     course: row.course_code,
     title: row.course_name,
     section: row.section_name,
-    days: row.meeting_days,
-    start: row.start_time,
-    end: row.end_time,
+    days: row.meeting_days ?? '',
+    start: row.start_time ?? '',
+    end: row.end_time ?? '',
   }))
 
   return (

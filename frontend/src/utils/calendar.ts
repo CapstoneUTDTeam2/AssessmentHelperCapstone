@@ -8,7 +8,7 @@ export const isWeekend = (d: Date) => d.getUTCDay() === 0 || d.getUTCDay() === 6
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
 
 /** True when a section meeting on `days` ("MW", "TR", or "Tuesday,Thursday") meets on this date. */
-export const meetsOn = (days: string, d: Date) =>
+export const meetsOn = (days: string | null, d: Date) =>
   weekdaysFromMeetingDays(days).includes(WEEKDAY_LABELS[d.getUTCDay()] as WeekdayLabel)
 
 export function businessDays(from: string, to: string) {

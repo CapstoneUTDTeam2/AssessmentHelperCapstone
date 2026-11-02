@@ -552,11 +552,6 @@ function SurveyForm({ role, professorId, onSubmitted }: { role: SurveyRole; prof
         How could the process improve?
         <textarea rows={2} value={improvements} onChange={(e) => setImprovements(e.target.value)} className={`mt-1 ${input}`} />
       </label>
-      {role === 'Observee' && (
-        <p className="mt-2 text-[10px] text-neutral-500">
-          Uploading a file about trouble during the observation isn’t available yet: the backend has no upload endpoint.
-        </p>
-      )}
       <div className="mt-2 flex justify-end">
         <button type="button" disabled={busy || processOk === null} onClick={submit} className={primary}>
           Submit survey

@@ -3,11 +3,14 @@ import { committeeKpis, getCommitteeOverview, hireLevel, notifyObservees, startO
 import type { CommitteeOverview } from '../api/committee'
 import { ApiError } from '../api/client'
 import type { UnmatchedFaculty } from '../api/kpis'
-import type { ObserverAlert, SelectionSignup } from '../api/observerSelection'
+import type { ObserverAlert, ObserverSelectionResult, SelectionSignup } from '../api/observerSelection'
 import { notifySurvey } from '../api/surveys'
+import DueMatchesCard from '../components/DueMatchesCard'
 import EvaluationsCard from '../components/EvaluationsTable'
 import type { HireLevel } from '../data/dashboardMock'
+import type { PageProps } from '../pageProps'
 import { KPI_ACCENTS } from '../theme'
+import { formatMeetingDays, formatTime } from '../utils/calendar'
 
 // Phases (GET /api/evaluation-cycles/current) after the observation deadline, when the survey notice can go out.
 const SURVEY_PHASES = ['post_observation_feedback', 'app_feedback', 'closed']
@@ -19,12 +22,51 @@ const HIRE_LEVEL_DOTS: Record<HireLevel, string> = {
   Lecturer: 'bg-neutral-900',
 }
 
-function DashboardPage() {
+interface SelectionOutcome {
+  tone: 'success' | 'warning' | 'error'
+  title: string
+  detail: string
+}
+
+const OUTCOME_STYLES: Record<SelectionOutcome['tone'], string> = {
+  success: 'border-[#3f8a55] bg-green-50 text-[#1c4532]',
+  warning: 'border-[#e0791a] bg-orange-50 text-[#8a4a10]',
+  error: 'border-[#b3261e] bg-red-50 text-[#b3261e]',
+}
+
+function summarizeSelection(result: ObserverSelectionResult): SelectionOutcome {
+  const matched = result.matched_count ?? 0
+  const unmatched = result.unmatched_count ?? 0
+  const short = (result.alerts ?? []).filter((alert) => alert.level === 'low').length
+  // Signups with requests or an observer keep their list, so this run did not touch them.
+  const kept = result.signup_count - matched - unmatched
+  if (result.signup_count === 0) {
+    return { tone: 'warning', title: 'No observers were selected', detail: 'There are no signups in this cycle yet.' }
+  }
+  if (matched + unmatched === 0) {
+    return {
+      tone: 'warning',
+      title: 'No observers were selected',
+      detail: `All ${result.signup_count} signups already have requests or an observer, so their lists were kept.`,
+    }
+  }
+  const parts = [
+    `${matched} matched`,
+    unmatched > 0 && `${unmatched} with no observers`,
+    short > 0 && `${short} with fewer than 5 observers`,
+    kept > 0 && `${kept} kept their existing list`,
+  ].filter(Boolean)
+  return unmatched > 0 || short > 0
+    ? { tone: 'warning', title: 'Observer selection finished, but some signups need attention', detail: `${parts.join(' · ')}.` }
+    : { tone: 'success', title: 'Observer selection completed successfully', detail: `${parts.join(' · ')}.` }
+}
+
+function DashboardPage({ user }: PageProps) {
   const [data, setData] = useState<CommitteeOverview | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [selection, setSelection] = useState<{ signups: SelectionSignup[]; alerts: ObserverAlert[] } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [outcome, setOutcome] = useState<SelectionOutcome | null>(null)
 
   const load = () => {
     const controller = new AbortController()
@@ -43,12 +85,18 @@ function DashboardPage() {
 
   const runSelection = async () => {
     setBusy('Selecting observers…')
+    setOutcome(null)
     try {
       const result = await startObserverSelection()
-      setSelection({ signups: result.signups, alerts: result.alerts ?? [] })
+      setOutcome(summarizeSelection(result))
       setError(null)
+      load()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Observer selection failed')
+      setOutcome({
+        tone: 'error',
+        title: 'Observer selection failed',
+        detail: err instanceof ApiError ? err.message : 'The server could not be reached. No lists were changed.',
+      })
     } finally {
       setBusy(null)
     }
@@ -59,6 +107,7 @@ function DashboardPage() {
     try {
       await notifyObservees(signupId)
       setError(null)
+      load()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Notify failed')
     } finally {
@@ -118,6 +167,20 @@ function DashboardPage() {
           </button>
         </div>
       </header>
+      {outcome && (
+        <div
+          role={outcome.tone === 'success' ? 'status' : 'alert'}
+          className={`mt-3 flex items-start justify-between gap-3 rounded-md border px-3 py-2 ${OUTCOME_STYLES[outcome.tone]}`}
+        >
+          <div>
+            <p className="text-xs font-semibold">{outcome.title}</p>
+            <p className="text-[11px]">{outcome.detail}</p>
+          </div>
+          <button type="button" onClick={() => setOutcome(null)} aria-label="Dismiss" className="text-sm leading-none">
+            ×
+          </button>
+        </div>
+      )}
       {error && <p className="mt-3 text-[11px] text-[#b3261e]">{error}</p>}
       {notice && <p className="mt-3 text-[11px] text-[#3f8a55]">{notice}</p>}
       {data && !data.kpis && (
@@ -150,9 +213,10 @@ function DashboardPage() {
 
         <div className="flex flex-col gap-4">
           <EvaluationsCard rows={data?.rows ?? []} today={data?.cycle?.today} />
+          {user.tester && <DueMatchesCard />}
           <SelectionPanel
-            signups={selection?.signups ?? data?.signups?.signups.map(toSelectionSignup) ?? []}
-            alerts={selection?.alerts ?? data?.alerts ?? []}
+            signups={data?.signups?.signups ?? []}
+            alerts={data?.alerts ?? []}
             onNotifyAll={() => notify()}
             onNotifyOne={(id) => notify(id)}
           />
@@ -162,19 +226,9 @@ function DashboardPage() {
   )
 }
 
-function toSelectionSignup(match: NonNullable<CommitteeOverview['signups']>['signups'][number]) {
-  return {
-    signup_id: match.signup_id ?? 0,
-    professor_id: match.faculty_id,
-    professor_name: match.faculty_name,
-    course_code: match.course_code,
-    course_name: match.course_name,
-    section_id: match.section_id,
-    section_name: '',
-    status: match.insufficient ? 'Unmatched' : 'Matched',
-    observers: match.observers,
-    eligible_count: match.eligible_count,
-  } satisfies SelectionSignup
+function meetingLabel(signup: SelectionSignup) {
+  if (!signup.start_time || !signup.end_time) return 'No set meeting time'
+  return `${formatMeetingDays(signup.meeting_days)} ${formatTime(signup.start_time)}–${formatTime(signup.end_time)}`
 }
 
 type LevelRow = { level: HireLevel; due: number; overdue: number; outstanding: number }
@@ -320,21 +374,26 @@ function SelectionPanel({
 
       <ul className="mt-3 space-y-2">
         {signups.map((signup) => (
-          <li key={signup.signup_id || signup.professor_id} className="rounded-md bg-neutral-50 px-3 py-2.5">
+          <li key={signup.signup_id} className="rounded-md bg-neutral-50 px-3 py-2.5">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <p className="text-[11px] font-semibold text-neutral-900">
-                  {signup.professor_name} · {signup.course_code}
-                  {signup.section_name ? `.${signup.section_name}` : ''}
+                  {signup.professor_name} · {signup.course_code}.{signup.section_name}
                 </p>
                 <p className="text-[10px] text-neutral-500">
-                  {signup.observers.map((o) => o.name).join(', ') || 'No observers'} · {signup.status}
+                  {meetingLabel(signup)}
+                  {signup.professor_email ? ` · ${signup.professor_email}` : ''}
+                </p>
+                <p className="text-[10px] text-neutral-500">
+                  {signup.status === 'Pending'
+                    ? 'Waiting for selection'
+                    : `${signup.observers.map((o) => o.name).join(', ') || 'No observers'} · ${signup.status}`}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => onNotifyOne(signup.signup_id)}
-                disabled={!signup.signup_id || signup.observers.length === 0}
+                disabled={signup.status !== 'Matched'}
                 className="rounded-md bg-[#e0791a] px-2.5 py-1 text-[10px] font-medium text-white disabled:opacity-50"
               >
                 Notify observee

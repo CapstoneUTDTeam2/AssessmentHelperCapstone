@@ -14,6 +14,7 @@ export interface ProfessorEvaluationStatus {
   professor_id: number
   name: string
   current_level: string | null
+  start_term_id: number | null
   frequency_years: number | null
   /** ISO date (YYYY-MM-DD), or null if never evaluated. */
   last_evaluation_date: string | null

@@ -13,7 +13,7 @@ export interface Kpi {
 
 export type HireLevel = 'Assistant' | 'Associate' | 'Full' | 'Lecturer'
 
-export type EvaluationStatus = 'Overdue' | 'Report overdue' | 'Unmatched' | 'Pending' | 'Confirmed' | 'Completed'
+export type EvaluationStatus = 'Overdue' | 'Report overdue' | 'Not held' | 'Unmatched' | 'Pending' | 'Confirmed' | 'Completed'
 
 export interface EvaluationRow {
   id: number

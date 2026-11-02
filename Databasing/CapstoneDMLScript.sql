@@ -78,12 +78,13 @@ Values
 INSERT INTO ObservationTemplate(TemplateID, TemplateVersion, TemplateContent, LastUpdateDate, LastUpdateTime, isActive)
 Values
 (1, '1.0', 'Standard classroom observation template.', '2026-01-10', '09:00:00', FALSE),
-(2, '2.0', 'Updated classroom observation template with revised teaching criteria.', '2026-08-15', '10:30:00', TRUE);
+(2, '2.0', 'Updated classroom observation template with revised teaching criteria.', '2026-08-15', '10:30:00', FALSE),
+(3, '3.0', 'Classroom observation template for in-person classes.', '2026-08-20', '09:00:00', TRUE);
 
 INSERT INTO EvaluationCycle(CycleID, TermID, SignUpDeadLine, ObservationDeadLine, PostObservationFeedbackDeadLine, AppFeedbackDeadLine, TemplateID)
 Values
 (1, 4, '2026-01-30', '2026-04-15', '2026-05-01', '2026-05-15', 1),
-(2, 5, '2026-09-15', '2026-11-15', '2026-12-15', '2026-12-15', 2);
+(2, 5, '2026-09-15', '2026-11-15', '2026-12-15', '2026-12-15', 3);
 
 INSERT INTO ObservationSignup(SignupID, CycleID, ObserveeProfessorID, SectionID, SignupDate, 
     SignupTime, Status)
@@ -139,22 +140,77 @@ VALUES
 (5, 2, 'Clarity',             'Concepts are explained clearly.'),
 (6, 2, 'Student Interaction', 'Instructor interacts effectively with students.');
 
+-- Template 3.0, the template for the current cycle.
+INSERT INTO EvaluationCriterionSection (TemplateID, SectionName, DisplayOrder)
+VALUES
+(3, 'Planning and Organization', 1),
+(3, 'Teaching and Content', 2),
+(3, 'Student Engagement', 3);
+
+INSERT INTO EvaluationCriterion (CriterionID, TemplateID, CriterionName, Description, SectionID, DisplayOrder, IsRequired)
+VALUES
+(7, 3, 'Lesson Structure', 'Class has a clear beginning, middle, and end.', 1, 1, TRUE),
+(8, 3, 'Preparation and Materials', 'The instructor is ready and materials support the lesson.', 1, 2, FALSE),
+(9, 3, 'Time Management', 'Class time is used well.', 1, 3, TRUE),
+(10, 3, 'Clarity of Explanation', 'Concepts are explained in a way students can follow.', 2, 4, TRUE),
+(11, 3, 'Subject Knowledge', 'The instructor shows command of the material.', 2, 5, TRUE),
+(12, 3, 'Concrete Examples', 'Abstract ideas are made concrete.', 2, 6, FALSE),
+(13, 3, 'Student Interaction', 'Students take an active part in class.', 3, 7, TRUE),
+(14, 3, 'Checking for Understanding', 'The instructor checks whether students are following.', 3, 8, FALSE),
+(15, 3, 'Classroom Environment', 'The room feels respectful and supports learning.', 3, 9, TRUE);
+
+INSERT INTO EvaluationCriterionBullet (CriterionID, BulletOrder, BulletText)
+VALUES
+(7, 1, 'States the goals or agenda'),
+(7, 2, 'Moves logically between topics'),
+(7, 3, 'Closes with a summary or next steps'),
+(8, 1, 'Slides, handouts, and examples are clear and ready to use'),
+(8, 2, 'Room technology is used without major disruption'),
+(8, 3, 'Materials can be read or seen from the back of the room'),
+(9, 1, 'Starts and ends on time'),
+(9, 2, 'Gives each topic a suitable amount of time'),
+(9, 3, 'Adjusts the pace when needed without rushing the key material'),
+(10, 1, 'Defines key terms'),
+(10, 2, 'Breaks complex ideas into steps'),
+(10, 3, 'Uses clear language and speaks audibly'),
+(11, 1, 'Presents accurate, current content'),
+(11, 2, 'Answers questions with confidence, or follows up if unsure'),
+(11, 3, 'Goes beyond reading from slides'),
+(12, 1, 'Uses worked examples, demonstrations, or sample problems'),
+(12, 2, 'Walks through examples step by step'),
+(12, 3, 'Connects new material to earlier topics'),
+(13, 1, 'Asks questions that invite thinking, not just yes or no answers'),
+(13, 2, 'Gives students time to respond'),
+(13, 3, 'Includes activities, discussion, or problem-solving when suitable'),
+(14, 1, 'Uses questions, quick problems, or similar checks'),
+(14, 2, 'Notices signs of confusion'),
+(14, 3, 'Re-explains or adjusts based on student responses'),
+(15, 1, 'Treats students with respect and is approachable'),
+(15, 2, 'Encourages questions from all parts of the room'),
+(15, 3, 'Manages distractions and keeps the class focused');
+
 INSERT INTO Observation(ObservationID, SignupID, ObservationDate, ObserverProfessorID, TemplateID, ScheduledDate,
     ScheduledTime, CompletedDate, CompletedTime, Status, Signee, Observer, Notes, ObserveeID, ObservationTime)
 Values
-(1, 1, '2026-10-14', 2, 2, '2026-10-14', '09:00:00', NULL, NULL, 'Scheduled', 'Alice Johnson', 'Robert Smith', 'Strong classroom organization and clear explanations.', 1, '09:00:00'),
-(2, 2, '2026-10-20', 3, 2, '2026-10-20', '10:00:00', NULL, NULL, 'Scheduled', 'Robert Smith', 'Carol Williams', 'Effective use of examples and student interaction.', 2, '10:00:00'),
-(3, 3, '2026-10-26', 1, 2, '2026-10-26', '13:00:00', NULL, NULL, 'Scheduled', 'Carol Williams', 'Alice Johnson', 'Observation scheduled for the fall evaluation cycle.', 3, '13:00:00'),
-(4, 4, '2026-11-04', 7, 2, '2026-11-04', '15:00:00', NULL, NULL, 'Scheduled', 'David Brown', 'Grace Lee', 'Observation scheduled for the fall evaluation cycle.', 4, '15:00:00');
+(1, 1, '2026-10-14', 2,3, '2026-10-14', '09:00:00', NULL, NULL, 'Scheduled', 'Alice Johnson', 'Robert Smith', 'Strong classroom organization and clear explanations.', 1, '09:00:00'),
+(2, 2, '2026-10-20', 3,3, '2026-10-20', '10:00:00', NULL, NULL, 'Scheduled', 'Robert Smith', 'Carol Williams', 'Effective use of examples and student interaction.', 2, '10:00:00'),
+(3, 3, '2026-10-26', 1,3, '2026-10-26', '13:00:00', NULL, NULL, 'Scheduled', 'Carol Williams', 'Alice Johnson', 'Observation scheduled for the fall evaluation cycle.', 3, '13:00:00'),
+(4, 4, '2026-11-04', 7,3, '2026-11-04', '15:00:00', NULL, NULL, 'Scheduled', 'David Brown', 'Grace Lee', 'Observation scheduled for the fall evaluation cycle.', 4, '15:00:00');
 
 INSERT INTO ObservationCriterionRating (ObservationID, CriterionID, TemplateID, Rating, Comments)
 VALUES
-(1, 4, 2, 5, 'Well organized lecture.'),
-(1, 5, 2, 4, 'Clear explanations.'),
-(1, 6, 2, 6, 'Not applicable this session.'),
-(2, 4, 2, 4, 'Good pacing.'),
-(2, 5, 2, 5, 'Strong examples.'),
-(2, 6, 2, 5, 'Good student participation.');
+(1, 7, 3, 5, 'Well organized lecture.'),
+(1, 9, 3, 4, 'Good use of class time.'),
+(1, 10, 3, 4, 'Clear explanations.'),
+(1, 11, 3, 5, 'Strong command of the material.'),
+(1, 13, 3, 6, 'Not applicable this session.'),
+(1, 15, 3, 5, 'Respectful classroom.'),
+(2, 7, 3, 4, 'Clear lesson plan.'),
+(2, 9, 3, 4, 'Good pacing.'),
+(2, 10, 3, 5, 'Strong examples.'),
+(2, 11, 3, 4, 'Knows the material well.'),
+(2, 13, 3, 5, 'Good student participation.'),
+(2, 15, 3, 4, 'Students felt comfortable asking questions.');
 
 -- Completing an observation locks its template and freezes its ratings, so do it last.
 UPDATE Observation SET Status = 'Completed', CompletedDate = '2026-10-14', CompletedTime = '10:15:00' WHERE ObservationID = 1;

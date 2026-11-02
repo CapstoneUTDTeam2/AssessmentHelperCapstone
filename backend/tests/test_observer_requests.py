@@ -144,8 +144,8 @@ def test_proposed_dates_are_checked(client, list_ready, days_after_monday, messa
 
 
 def test_past_proposed_date_is_rejected(client, list_ready):
-    last_monday = list_ready["monday"] - timedelta(days=7)
-    response = _send(client, [1], proposed_dates=[str(last_monday)])
+    past_monday = list_ready["monday"] - timedelta(days=14)
+    response = _send(client, [1], proposed_dates=[str(past_monday)])
     assert response.status_code == 400
     assert "in the past" in response.json()["detail"]
 
@@ -323,7 +323,7 @@ def test_choose_observer_stores_observation_and_declines_others(client, list_rea
         observation = conn.execute(
             "SELECT ObserverProfessorID, ObserveeID, TemplateID, Status, ScheduledDate FROM Observation WHERE SignupID = 3"
         ).fetchone()
-    assert observation == (1, 3, 2, "Scheduled", list_ready["wednesday"])
+    assert observation == (1, 3, 3, "Scheduled", list_ready["wednesday"])
     assert _status(3) == "Accepted"
 
     statuses = {r["observer_id"]: r["status"] for r in client.get("/api/signups/3/requests").json()["requests"]}

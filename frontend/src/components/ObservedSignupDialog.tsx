@@ -9,7 +9,7 @@ export interface ObservableSection {
   course: string
   title: string
   section: string
-  /** CourseBook day letters, e.g. "MW" or "TR". */
+  /** Day letters ("MW") or CourseBook names ("Monday,Wednesday"). */
   days: string
   start: string
   end: string
@@ -142,7 +142,7 @@ function ObservedSignupDialog({
                     {s.course}.{s.section} · {s.title}
                   </span>
                   <span className="block text-[11px] text-neutral-500">
-                    {formatMeetingDays(s.days)} {formatTime(s.start)}–{formatTime(s.end)}
+                    {s.start && s.end ? `${formatMeetingDays(s.days)} ${formatTime(s.start)}–${formatTime(s.end)}` : 'No set meeting time'}
                     {s.room && s.room !== '—' ? ` · ${s.room}` : ''}
                   </span>
                 </span>

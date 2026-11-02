@@ -75,3 +75,10 @@ describe('layoutOverlaps', () => {
     expect(result).toEqual([[0, 2], [1, 2], [1, 2]])
   })
 })
+
+describe('sections with no meeting time', () => {
+  it('reads as no days and never meets', () => {
+    expect(weekdaysFromMeetingDays(null)).toEqual([])
+    expect(meetsOn(null, new Date('2026-10-05T00:00:00Z'))).toBe(false)
+  })
+})
