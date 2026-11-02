@@ -126,6 +126,7 @@ export function RequestObserversCard({
   const [result, setResult] = useState<ObserverChoice | null>(null)
   const { busy, error, run } = useAction()
 
+  const freeDates = (r: ObserverRequest) => r.available_dates ?? r.proposed_dates
   const requestFor = (observerId: number) => requests.find((r) => r.observer_id === observerId)
   const confirmed = requests.filter((r) => r.status === 'Accepted')
   const chosen = requests.find((r) => r.observation_date !== null)
@@ -146,7 +147,7 @@ export function RequestObserversCard({
 
   const choose = (r: ObserverRequest) =>
     run(async () => {
-      const date = choice[r.request_id] ?? r.proposed_dates[0]
+      const date = choice[r.request_id] ?? freeDates(r)[0]
       setResult(
         await selectObserver(signup.signup_id, {
           observee_id: professorId,
@@ -220,24 +221,32 @@ export function RequestObserversCard({
             {confirmed.map((r) => (
               <li key={r.request_id} className="flex flex-wrap items-center gap-2">
                 <span className="min-w-0 flex-1 text-xs text-neutral-900">{r.observer_name}</span>
-                {r.proposed_dates.length > 1 && (
+                {freeDates(r).length > 1 && (
                   <select
                     aria-label={`Observation date with ${r.observer_name}`}
-                    value={choice[r.request_id] ?? r.proposed_dates[0]}
+                    value={choice[r.request_id] ?? freeDates(r)[0]}
                     onChange={(e) => setChoice((c) => ({ ...c, [r.request_id]: e.target.value }))}
                     className="rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px]"
                   >
-                    {r.proposed_dates.map((d) => (
+                    {freeDates(r).map((d) => (
                       <option key={d} value={d}>
                         {shortDate(d)}
                       </option>
                     ))}
                   </select>
                 )}
-                {r.proposed_dates.length === 1 && (
-                  <span className="text-[11px] text-neutral-600">{shortDate(r.proposed_dates[0])}</span>
+                {freeDates(r).length === 1 && (
+                  <span className="text-[11px] text-neutral-600">{shortDate(freeDates(r)[0])}</span>
                 )}
-                <button type="button" disabled={busy} onClick={() => choose(r)} className={primary}>
+                {freeDates(r).length === 0 && (
+                  <span className="text-[11px] text-[#b3261e]">No longer free on your proposed dates</span>
+                )}
+                <button
+                  type="button"
+                  disabled={busy || freeDates(r).length === 0}
+                  onClick={() => choose(r)}
+                  className={primary}
+                >
                   Choose
                 </button>
               </li>

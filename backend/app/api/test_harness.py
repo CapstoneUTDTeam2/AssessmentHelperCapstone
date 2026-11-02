@@ -197,7 +197,7 @@ LIMIT 1
 # Due, Overdue, and Not Due against a Fall 2026 current cycle.
 LAST_EVAL_CHOICES = (
     ("Assistant Professor", date(2025, 10, 14)),  # next Fall 2026 → Due
-    ("Assistant Professor", date(2025, 3, 15)),  # next Spring 2026 → Overdue
+    ("Assistant Professor", date(2025, 3, 15)),  # due anytime in 2026 → Due
     ("Associate Professor", date(2024, 10, 14)),  # next Fall 2026 → Due
     ("Associate Professor", date(2025, 3, 15)),  # next Spring 2027 → Not Due
     ("Full Professor", date(2024, 3, 15)),  # next Spring 2026 → Overdue
