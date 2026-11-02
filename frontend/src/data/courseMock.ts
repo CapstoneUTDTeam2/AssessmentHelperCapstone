@@ -3,7 +3,8 @@
 
 import type { FacultyLevel } from './facultyMock'
 
-export type Days = 'MW' | 'TR' | 'MWF'
+/** Meeting-day letter code, like MW, TR, or MWF (R is Thursday). */
+export type Days = string
 
 /** ok = green badge, needsObserver / overdue = red badge. */
 export type SectionTone = 'ok' | 'needsObserver' | 'overdue'

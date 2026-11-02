@@ -10,7 +10,7 @@ import EvaluationsCard from '../components/EvaluationsTable'
 import type { HireLevel } from '../data/dashboardMock'
 import type { PageProps } from '../pageProps'
 import { KPI_ACCENTS } from '../theme'
-import { formatTime, weekdaysFromMeetingDays } from '../utils/calendar'
+import { formatMeetingDays, formatTime } from '../utils/calendar'
 
 // Phases (GET /api/evaluation-cycles/current) after the observation deadline, when the survey notice can go out.
 const SURVEY_PHASES = ['post_observation_feedback', 'app_feedback', 'closed']
@@ -228,8 +228,7 @@ function DashboardPage({ user }: PageProps) {
 
 function meetingLabel(signup: SelectionSignup) {
   if (!signup.start_time || !signup.end_time) return 'No set meeting time'
-  const days = weekdaysFromMeetingDays(signup.meeting_days).join('/') || signup.meeting_days
-  return `${days} ${formatTime(signup.start_time)}–${formatTime(signup.end_time)}`
+  return `${formatMeetingDays(signup.meeting_days)} ${formatTime(signup.start_time)}–${formatTime(signup.end_time)}`
 }
 
 type LevelRow = { level: HireLevel; due: number; overdue: number; outstanding: number }

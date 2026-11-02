@@ -11,6 +11,7 @@ import type { ListedObserver } from '../api/observerSelection'
 import type { ObserveeSignup } from '../api/signups'
 import { submitSurvey } from '../api/surveys'
 import type { ProfessorSurveys, SurveyRole } from '../api/surveys'
+import { formatMeetingDays } from '../utils/calendar'
 
 const secondary =
   'rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[11px] font-medium whitespace-nowrap text-neutral-900 transition-colors hover:bg-neutral-50 disabled:text-neutral-400 disabled:hover:bg-white'
@@ -48,7 +49,7 @@ function clock(time: string) {
 
 function classLine(r: Pick<ObserverRequest, 'course_code' | 'section_name' | 'meeting_days' | 'start_time' | 'end_time'>) {
   const time = r.start_time ? ` ${clock(r.start_time)}${r.end_time ? `–${clock(r.end_time)}` : ''}` : ''
-  return `${r.course_code}.${r.section_name}${r.meeting_days ? ` · ${r.meeting_days}${time}` : ''}`
+  return `${r.course_code}.${r.section_name}${r.meeting_days ? ` · ${formatMeetingDays(r.meeting_days)}${time}` : ''}`
 }
 
 function errorText(err: unknown, fallback: string) {
