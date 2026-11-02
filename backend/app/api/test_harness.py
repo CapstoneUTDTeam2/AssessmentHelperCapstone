@@ -372,22 +372,12 @@ def _time_str(value):
     return value.strftime("%H:%M") if hasattr(value, "strftime") else str(value)
 
 
-def _meeting_letter_ok(meeting_days, letter):
-    raw = meeting_days or ""
-    compact = parse_days(raw)
-    if letter not in compact:
-        return False
-    # CourseBook stores "Tuesday,Thursday"; the SQL eligibility function uses
-    # POSITION(letter IN meetingdays), so R is missing from that string.
-    return letter in raw
-
-
 def next_class_dates(meeting_days, start, end, count=2):
     dates = []
     day = start
     while day <= end and len(dates) < count:
         letter = WEEKDAY_LETTERS.get(day.weekday())
-        if letter and _meeting_letter_ok(meeting_days, letter):
+        if letter in parse_days(meeting_days):
             dates.append(day)
         day += timedelta(days=1)
     return dates

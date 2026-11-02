@@ -151,12 +151,16 @@ function TeacherDashboardPage({ navigate }: PageProps) {
     department: user?.department ?? null,
   }
 
-  const schedule: WeeklyBlock[] = classes.map((row) => ({
-    course: row.course_code,
-    days: weekdaysFromMeetingDays(row.meeting_days),
-    start: row.start_time.slice(0, 5),
-    end: row.end_time.slice(0, 5),
-  }))
+  const schedule: WeeklyBlock[] = classes.flatMap((row) =>
+    row.start_time && row.end_time
+      ? [{
+          course: row.course_code,
+          days: weekdaysFromMeetingDays(row.meeting_days),
+          start: row.start_time.slice(0, 5),
+          end: row.end_time.slice(0, 5),
+        }]
+      : [],
+  )
   const visits = [
     ...(data.observations?.received ?? []).map((o) => toVisit(o, true)),
     ...(data.observations?.given ?? []).map((o) => toVisit(o, false)),

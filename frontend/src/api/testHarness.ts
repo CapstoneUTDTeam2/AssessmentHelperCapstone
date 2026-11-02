@@ -100,6 +100,16 @@ export function getDemoPair(signal?: AbortSignal) {
   return apiGet<DemoPair>('/api/test/demo-pair', undefined, signal)
 }
 
+export interface TestPipeline {
+  signup: { signup_id: number; status: string } | null
+  observers: { observer_id: number; name: string }[]
+  requests: { request_id: number; observer_id: number; observer_name: string; status: string }[]
+}
+
+export function getTestPipeline(observeeId: number, signal?: AbortSignal) {
+  return apiGet<TestPipeline>('/api/test/pipeline', { observee_id: observeeId }, signal)
+}
+
 /** datetime-local value from an API ISO timestamp. */
 export function toDateTimeLocal(iso: string) {
   const trimmed = iso.replace('Z', '').slice(0, 16)

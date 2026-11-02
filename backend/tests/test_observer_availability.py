@@ -6,6 +6,7 @@ import psycopg
 import pytest
 
 from app.api import cycle_deadlines, observer_availability
+from app.api.observer_matching import parse_days
 from tests.conftest import TEST_DATABASE_URL, _raw_conninfo
 
 
@@ -200,3 +201,88 @@ def test_accepted_signup_is_not_insufficient(client):
     body = client.get("/api/observees/1/signup").json()
     assert body["status"] == "Accepted"
     assert body["insufficient"] is False
+
+
+def test_section_with_no_meeting_time_does_not_block_observer(client, fresh_signups):
+    observer_id = _db_eligible_ids(3)[0]
+    with _db() as conn:
+        conn.execute("INSERT INTO Sections VALUES (99, '0W1', 1, 5, NULL, NULL, NULL)")
+        conn.execute("INSERT INTO TeachingAssignment (SectionID, ProfessorID) VALUES (99, %s)", (observer_id,))
+    assert observer_id in _db_eligible_ids(3)
+
+
+# Meeting days are stored as letters or as CourseBook names.
+
+DAY_FORMATS = [
+    ("MW", {"M", "W"}),
+    ("TR", {"T", "R"}),
+    ("MWF", {"M", "W", "F"}),
+    ("Monday,Wednesday", {"M", "W"}),
+    ("Tuesday,Thursday", {"T", "R"}),
+    ("Monday,Friday", {"M", "F"}),
+    ("Wednesday,Friday", {"W", "F"}),
+    ("Thursday", {"R"}),
+    ("Friday", {"F"}),
+    ("Saturday", {"S"}),
+    (None, set()),
+    ("", set()),
+]
+
+
+@pytest.mark.parametrize("stored, letters", DAY_FORMATS)
+def test_backend_and_database_read_days_the_same(client, stored, letters):
+    assert parse_days(stored) == letters
+    with _db() as conn:
+        result = conn.execute("SELECT meeting_day_letters(%s)", (stored,)).fetchone()[0]
+    assert set(result) == letters
+
+
+def _next_date(start, weekday):
+    return start + timedelta(days=(weekday - start.weekday()) % 7 or 7)
+
+
+def _meet_on(signup_id, stored_days, preferred):
+    with _db() as conn:
+        conn.execute(
+            "UPDATE Sections SET MeetingDays = %s WHERE SectionID = (SELECT SectionID FROM ObservationSignup WHERE SignupID = %s)",
+            (stored_days, signup_id),
+        )
+        conn.execute("DELETE FROM SignupPreferredDate WHERE SignupID = %s", (signup_id,))
+        conn.execute("INSERT INTO SignupPreferredDate VALUES (%s, %s)", (signup_id, preferred))
+
+
+def _available_all_week(observer_id):
+    with _db() as conn:
+        conn.execute("DELETE FROM ObserverAvailability WHERE ProfessorID = %s AND CycleID = 2", (observer_id,))
+        for weekday in "MTWRF":
+            conn.execute("INSERT INTO ObserverAvailability VALUES (%s, 2, %s, '08:00', '19:00')", (observer_id, weekday))
+
+
+def test_thursday_dates_count_for_named_days(client, fresh_signups):
+    observer_id = _db_eligible_ids(3)[0]
+    _available_all_week(observer_id)
+    thursday = _next_date(fresh_signups["monday"], 3)
+    _meet_on(3, "Tuesday,Thursday", thursday)
+    assert observer_id in _db_eligible_ids(3)
+
+
+def test_thursday_class_is_not_a_tuesday_conflict(client, fresh_signups):
+    observer_id = _db_eligible_ids(3)[0]
+    _available_all_week(observer_id)
+    tuesday = _next_date(fresh_signups["monday"], 1)
+    _meet_on(3, "Tuesday", tuesday)
+    with _db() as conn:
+        conn.execute("INSERT INTO Sections VALUES (98, '002', 1, 5, 'Thursday', '13:00', '14:15')")
+        conn.execute("INSERT INTO TeachingAssignment (SectionID, ProfessorID) VALUES (98, %s)", (observer_id,))
+    assert observer_id in _db_eligible_ids(3)
+
+
+def test_named_thursday_class_blocks_a_thursday_date(client, fresh_signups):
+    observer_id = _db_eligible_ids(3)[0]
+    _available_all_week(observer_id)
+    thursday = _next_date(fresh_signups["monday"], 3)
+    _meet_on(3, "Tuesday,Thursday", thursday)
+    with _db() as conn:
+        conn.execute("INSERT INTO Sections VALUES (98, '002', 1, 5, 'Tuesday,Thursday', '13:00', '14:15')")
+        conn.execute("INSERT INTO TeachingAssignment (SectionID, ProfessorID) VALUES (98, %s)", (observer_id,))
+    assert observer_id not in _db_eligible_ids(3)

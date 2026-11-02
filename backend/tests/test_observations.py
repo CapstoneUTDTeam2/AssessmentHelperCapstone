@@ -186,3 +186,55 @@ def test_completing_counts_as_last_evaluation(client, happened):
     client.post("/api/observations/3/sign", json={"professor_id": 3})
     status = client.get("/api/evaluation-status/3").json()
     assert status["last_evaluation_date"] == _today().isoformat()
+
+
+# The observee reviews the finished form and comments before signing.
+
+def _comment(client, comments, observee_id=3, observation_id=3):
+    return client.put(
+        f"/api/observations/{observation_id}/observee-comments",
+        json={"observee_id": observee_id, "comments": comments},
+    )
+
+
+def test_observee_comments_before_signing(client, happened):
+    _rate(client, FULL)
+    assert client.post("/api/observations/3/sign", json={"professor_id": 1}).status_code == 200
+    response = _comment(client, [{"criterion_id": 5, "comment": "  This lesson was a review day. "}])
+    assert response.status_code == 200
+    by_id = {c["criterion_id"]: c for c in response.json()["criteria"]}
+    assert by_id[5]["observee_comment"] == "This lesson was a review day."
+    assert by_id[5]["rating"] == 4
+
+
+def test_observer_edit_keeps_observee_comment(client, happened):
+    _rate(client, FULL)
+    _comment(client, [{"criterion_id": 4, "comment": "I disagree."}])
+    response = _rate(client, FULL)
+    by_id = {c["criterion_id"]: c for c in response.json()["criteria"]}
+    assert by_id[4]["observee_comment"] == "I disagree."
+
+
+def test_only_observee_can_comment(client, happened):
+    _rate(client, FULL)
+    assert _comment(client, [{"criterion_id": 4, "comment": "x"}], observee_id=1).status_code == 403
+
+
+def test_comment_needs_finished_form_after_it_happens(client):
+    assert _comment(client, [{"criterion_id": 4, "comment": "x"}]).status_code == 400
+
+
+def test_comment_needs_finished_form(client, happened):
+    response = _comment(client, [{"criterion_id": 4, "comment": "x"}])
+    assert response.status_code == 400
+    assert "isn't finished" in response.json()["detail"]
+
+
+def test_comments_lock_when_observee_signs(client, happened):
+    _rate(client, FULL)
+    assert client.post("/api/observations/3/sign", json={"professor_id": 3}).status_code == 200
+    assert _comment(client, [{"criterion_id": 4, "comment": "Too late."}]).status_code == 409
+
+
+def test_completed_observation_rejects_comments(client):
+    assert _comment(client, [{"criterion_id": 4, "comment": "x"}], observee_id=1, observation_id=1).status_code == 409

@@ -55,8 +55,8 @@ SELECT
           AND s2.TermID = m.TermID
           AND s2.StartTime < m.EndTime AND s2.EndTime > m.StartTime
           AND EXISTS (
-              SELECT 1 FROM regexp_split_to_table(COALESCE(s2.MeetingDays, ''), '') d
-              WHERE d <> '' AND POSITION(d IN COALESCE(m.MeetingDays, '')) > 0
+              SELECT 1 FROM regexp_split_to_table(meeting_day_letters(s2.MeetingDays), '') d
+              WHERE d <> '' AND POSITION(d IN meeting_day_letters(m.MeetingDays)) > 0
           )
     ) AS busy_at_class_time
 FROM matches m

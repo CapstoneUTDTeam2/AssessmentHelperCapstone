@@ -6,12 +6,13 @@ import {
   advanceTestDays,
   getDemoPair,
   getTestHarness,
+  getTestPipeline,
   randomizeUnknowns,
   setTestClock,
   setTestProfessor,
   toDateTimeLocal,
 } from '../api/testHarness'
-import type { DemoPairPerson } from '../api/testHarness'
+import type { DemoPairPerson, TestPipeline } from '../api/testHarness'
 import { MockDataBadge } from './MockData'
 
 interface TesterBarProps {
@@ -30,7 +31,47 @@ function loadOpen() {
   }
 }
 
+type Pair = { a: DemoPairPerson; b: DemoPairPerson }
+
+// The API only suggests people who haven't signed up, so keep the pair being walked through.
+const PAIR_KEY = 'assessment-helper-tester-pair'
+
+function loadPair(): Pair | null {
+  try {
+    return JSON.parse(localStorage.getItem(PAIR_KEY) ?? 'null') as Pair | null
+  } catch {
+    return null
+  }
+}
+
+function savePair(pair: Pair | null) {
+  try {
+    if (pair) localStorage.setItem(PAIR_KEY, JSON.stringify(pair))
+    else localStorage.removeItem(PAIR_KEY)
+  } catch {
+    // Storage unavailable; the pair may change after a refresh.
+  }
+}
+
+function progressLines(pipeline: TestPipeline | undefined) {
+  if (!pipeline) return ['Loading status…']
+  if (!pipeline.signup) return ['Not signed up']
+  const chosen = pipeline.requests.find((r) => r.status === 'Accepted')
+  return [
+    `Signed up · ${pipeline.signup.status}`,
+    pipeline.observers.length > 0
+      ? `Observer list: ${pipeline.observers.map((o) => o.name).join(', ')}`
+      : 'No observer list yet',
+    ...(chosen ? [`Confirmed by ${chosen.observer_name}`] : []),
+  ]
+}
+
 function TesterBar({ user, onUser, onReload }: TesterBarProps) {
+  const keepPair = (pair: Pair | null) => {
+    savePair(pair)
+    setDemoPair(pair)
+  }
+
   const [open, setOpen] = useState(loadOpen)
   const [professors, setProfessors] = useState<ProfessorEvaluationStatus[]>([])
   const [professorId, setProfessorId] = useState(user.professorId ?? 1)
@@ -43,7 +84,9 @@ function TesterBar({ user, onUser, onReload }: TesterBarProps) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [randomizeNote, setRandomizeNote] = useState<string | null>(null)
-  const [demoPair, setDemoPair] = useState<{ a: DemoPairPerson; b: DemoPairPerson } | null>(null)
+  const [demoPair, setDemoPair] = useState<Pair | null>(loadPair)
+  const [pairProgress, setPairProgress] = useState<Record<number, TestPipeline>>({})
+  const [progressTick, setProgressTick] = useState(0)
 
   const selected = professors.find((row) => row.professor_id === professorId)
   const startTerm = terms.find((term) => term.term_id === selected?.start_term_id)
@@ -67,13 +110,27 @@ function TesterBar({ user, onUser, onReload }: TesterBarProps) {
         setFrozen(harness.frozen)
         setTerms(harness.terms)
         setProfessors(status.professors)
-        setDemoPair(pair.pair)
+        if (!loadPair()) keepPair(pair.pair)
       })
       .catch((err: unknown) => {
         if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Could not load the test harness')
       })
     return () => controller.abort()
   }, [])
+
+  const pairA = demoPair?.a.professor_id
+  const pairB = demoPair?.b.professor_id
+
+  useEffect(() => {
+    if (pairA === undefined || pairB === undefined) return
+    const controller = new AbortController()
+    Promise.all([getTestPipeline(pairA, controller.signal), getTestPipeline(pairB, controller.signal)])
+      .then(([a, b]) => setPairProgress({ [pairA]: a, [pairB]: b }))
+      .catch(() => {
+        // Progress is a convenience; the pair itself still works.
+      })
+    return () => controller.abort()
+  }, [pairA, pairB, progressTick, user.professorId, user.role])
 
   useEffect(() => {
     if (user.professorId != null) setProfessorId(user.professorId)
@@ -181,10 +238,30 @@ function TesterBar({ user, onUser, onReload }: TesterBarProps) {
       )
       const [status, pair] = await Promise.all([getEvaluationStatuses(), getDemoPair()])
       setProfessors(status.professors)
-      setDemoPair(pair.pair)
+      keepPair(pair.pair)
       onReload()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Could not randomize Unknown professors')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const pickNewPair = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const { pair } = await getDemoPair()
+      if (pair && pair.a.professor_id === pairA && pair.b.professor_id === pairB) {
+        setRandomizeNote('No other pair yet: this is still the first available pair. Sign them up to move on.')
+      } else if (pair) {
+        keepPair(pair)
+        setRandomizeNote(null)
+      } else {
+        setRandomizeNote('No other Due pair is available, so the current pair was kept.')
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not pick a new pair')
     } finally {
       setBusy(false)
     }
@@ -341,15 +418,41 @@ function TesterBar({ user, onUser, onReload }: TesterBarProps) {
           </p>
           {randomizeNote && <p className="mt-1 text-neutral-600">{randomizeNote}</p>}
           <div className="mt-2 rounded border border-[#c4561a]/25 bg-white/70 px-3 py-2">
-            <p className="font-medium">Demo pair · Due, not signed up, can observe each other</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-medium">Demo pair · stays the same until you pick a new one</p>
+              <div className="flex gap-1.5">
+                {demoPair && (
+                  <button
+                    type="button"
+                    onClick={() => setProgressTick((n) => n + 1)}
+                    className="rounded border border-[#c4561a]/40 px-2 py-0.5"
+                  >
+                    Refresh status
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={pickNewPair}
+                  disabled={busy}
+                  className="rounded border border-[#c4561a]/40 px-2 py-0.5 disabled:opacity-50"
+                >
+                  Pick new pair
+                </button>
+              </div>
+            </div>
             {demoPair ? (
               <div className="mt-1.5 flex flex-wrap items-start gap-3">
                 {([demoPair.a, demoPair.b] as const).map((person) => (
                   <div key={person.professor_id} className="min-w-56 flex-1">
                     <p>
-                      {person.name} · {person.status} · {person.course_level}-level
+                      {person.name} · {person.course_level}-level
                     </p>
                     <p className="text-neutral-600">{classLabel(person)}</p>
+                    {progressLines(pairProgress[person.professor_id]).map((line) => (
+                      <p key={line} className="text-neutral-800">
+                        {line}
+                      </p>
+                    ))}
                     <button
                       type="button"
                       onClick={() => lookAsPair(person)}

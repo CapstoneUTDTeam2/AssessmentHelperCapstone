@@ -1,4 +1,5 @@
 import random
+import re
 from datetime import datetime, time
 
 from fastapi import APIRouter, HTTPException, Query
@@ -28,6 +29,8 @@ DAY_NAMES = {
     "TH": "R",
     "FRIDAY": "F",
     "FRI": "F",
+    "SATURDAY": "S",
+    "SAT": "S",
 }
 
 OBSERVEE_SQL = """
@@ -253,21 +256,23 @@ def course_level(course_code):
 
 
 def parse_days(value):
+    # "MW", "TR", or CourseBook "Tuesday,Thursday". Same rule as meeting_day_letters in the database.
     if not value:
         return set()
-    raw = value.strip().upper()
-    if raw in DAY_NAMES:
-        return {DAY_NAMES[raw]}
     days = set()
-    index = 0
-    while index < len(raw):
-        if raw[index] == "T" and index + 1 < len(raw) and raw[index + 1] == "H":
-            days.add("R")
-            index += 2
+    for token in re.findall(r"[A-Z]+", value.upper()):
+        if token in DAY_NAMES:
+            days.add(DAY_NAMES[token])
             continue
-        if raw[index] in "MTWRF":
-            days.add(raw[index])
-        index += 1
+        index = 0
+        while index < len(token):
+            if token[index] == "T" and index + 1 < len(token) and token[index + 1] == "H":
+                days.add("R")
+                index += 2
+                continue
+            if token[index] in "MTWRF":
+                days.add(token[index])
+            index += 1
     return days
 
 

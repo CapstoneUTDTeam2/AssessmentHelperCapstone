@@ -53,6 +53,8 @@ export interface ObservationCriterion {
   rating: number | null
   not_applicable: boolean
   comment: string | null
+  /** The observee's response to this rating, written before they sign. */
+  observee_comment: string | null
 }
 
 export interface ObservationReport extends ObservationSummary {
@@ -101,6 +103,15 @@ export function saveRatings(
   signal?: AbortSignal,
 ) {
   return apiPut<ObservationReport>(`/api/observations/${observationId}/ratings`, body, undefined, signal)
+}
+
+/** Observee only. Throws ApiError 409 once they have signed. */
+export function saveObserveeComments(
+  observationId: number,
+  body: { observee_id: number; comments: { criterion_id: number; comment: string | null }[] },
+  signal?: AbortSignal,
+) {
+  return apiPut<ObservationReport>(`/api/observations/${observationId}/observee-comments`, body, undefined, signal)
 }
 
 /** Observer or observee. Throws ApiError 400 before the date or while `missing` isn't empty. */

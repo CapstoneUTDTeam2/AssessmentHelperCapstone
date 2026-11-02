@@ -55,7 +55,7 @@ SELECT
     ec.criterionid, ec.criterionname, ec.description, ec.sectionid, ec.displayorder,
     ec.isactive, ec.isrequired, ec.notesonlowrating,
     ARRAY(SELECT b.BulletText FROM EvaluationCriterionBullet b WHERE b.CriterionID = ec.CriterionID ORDER BY b.BulletOrder) AS bullets,
-    r.rating, r.comments
+    r.rating, r.comments, r.observeecomment
 FROM Observation o
 JOIN EvaluationCriterion ec ON ec.TemplateID = o.TemplateID
 LEFT JOIN ObservationCriterionRating r ON r.ObservationID = o.ObservationID AND r.CriterionID = ec.CriterionID
@@ -70,6 +70,12 @@ INSERT INTO ObservationCriterionRating (ObservationID, CriterionID, TemplateID, 
 VALUES (:observation_id, :criterion_id, :template_id, :rating, :comment)
 ON CONFLICT (ObservationID, CriterionID)
 DO UPDATE SET Rating = EXCLUDED.Rating, Comments = EXCLUDED.Comments
+"""
+UPSERT_OBSERVEE_COMMENT_SQL = """
+INSERT INTO ObservationCriterionRating (ObservationID, CriterionID, TemplateID, ObserveeComment)
+VALUES (:observation_id, :criterion_id, :template_id, :comment)
+ON CONFLICT (ObservationID, CriterionID)
+DO UPDATE SET ObserveeComment = EXCLUDED.ObserveeComment
 """
 UPDATE_NOTES_SQL = "UPDATE Observation SET Notes = :notes WHERE ObservationID = :observation_id"
 SIGN_OBSERVER_SQL = "UPDATE Observation SET ObserverSigned = TRUE WHERE ObservationID = :observation_id"
@@ -92,6 +98,16 @@ class RatingsBody(BaseModel):
     observer_id: int
     ratings: list[RatingEntry] = []
     summary: str | None = None
+
+
+class ObserveeCommentEntry(BaseModel):
+    criterion_id: int
+    comment: str | None = None
+
+
+class ObserveeCommentsBody(BaseModel):
+    observee_id: int
+    comments: list[ObserveeCommentEntry] = []
 
 
 class SignBody(BaseModel):
@@ -162,6 +178,7 @@ def _criteria(conn, observation_id):
             "rating": r["rating"],
             "not_applicable": r["rating"] == NOT_APPLICABLE,
             "comment": r["comments"],
+            "observee_comment": r["observeecomment"],
         }
         for r in rows
     ]
@@ -281,6 +298,48 @@ def save_ratings(observation_id: int, body: RatingsBody):
                 )
             if body.summary is not None:
                 conn.execute(text(UPDATE_NOTES_SQL), {"notes": body.summary, "observation_id": observation_id})
+            return _detail(conn, observation_id)[1]
+    except DBAPIError as error:
+        raise HTTPException(status_code=409, detail=_db_error(error))
+
+
+# What: the observee reviews the finished form and comments on the ratings before signing.
+@router.put("/observations/{observation_id}/observee-comments")
+def save_observee_comments(observation_id: int, body: ObserveeCommentsBody):
+    # Input: observee_id, comments [{criterion_id, comment}]
+    # Output: the updated report (409 once the observee has signed)
+    if len({e.criterion_id for e in body.comments}) != len(body.comments):
+        raise HTTPException(status_code=400, detail="Each criterion can only have one comment")
+    today = campus_now().date()
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(LOCK_OBSERVATION_SQL), {"observation_id": observation_id})
+            row, report = _detail(conn, observation_id)
+            if row["observeeid"] != body.observee_id:
+                raise HTTPException(status_code=403, detail="Only the observee can comment on the ratings")
+            if row["status"] == STATUS_COMPLETED:
+                raise HTTPException(status_code=409, detail="This observation is signed and locked")
+            if row["observeesigned"]:
+                raise HTTPException(status_code=409, detail="Comments can't change after you sign")
+            when = _observation_date(row)
+            if when is None or when > today:
+                raise HTTPException(status_code=400, detail="You can comment once the observation has happened")
+            if report["missing"]:
+                raise HTTPException(status_code=400, detail="The form isn't finished: " + "; ".join(report["missing"]))
+            valid = {c["criterion_id"] for c in report["criteria"]}
+            unknown = [e.criterion_id for e in body.comments if e.criterion_id not in valid]
+            if unknown:
+                raise HTTPException(status_code=400, detail=f"Criterion {unknown[0]} isn't on this observation's form")
+            for entry in body.comments:
+                conn.execute(
+                    text(UPSERT_OBSERVEE_COMMENT_SQL),
+                    {
+                        "observation_id": observation_id,
+                        "criterion_id": entry.criterion_id,
+                        "template_id": row["templateid"],
+                        "comment": (entry.comment or "").strip() or None,
+                    },
+                )
             return _detail(conn, observation_id)[1]
     except DBAPIError as error:
         raise HTTPException(status_code=409, detail=_db_error(error))

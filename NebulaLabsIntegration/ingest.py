@@ -311,6 +311,43 @@ def check_id_collisions(data: ImportData) -> None:
         raise IngestionError("A source section has no section number")
 
 
+# A stale section has the same course, section and term as an imported row, under another ID.
+MOVE_STALE_SIGNUPS_SQL = """
+UPDATE ObservationSignup os
+SET SectionID = cur.SectionID
+FROM Sections old
+JOIN Sections cur
+  ON old.CourseID = cur.CourseID
+ AND old.SectionName = cur.SectionName
+ AND old.TermID = cur.TermID
+WHERE os.SectionID = old.SectionID
+  AND cur.SectionID = ANY(%(current)s)
+  AND NOT old.SectionID = ANY(%(current)s)
+  AND EXISTS (
+      SELECT 1 FROM TeachingAssignment ta
+      WHERE ta.SectionID = cur.SectionID AND ta.ProfessorID = os.ObserveeProfessorID
+  )
+"""
+
+# Signups that could not move keep their old section.
+STALE_SECTIONS_SQL = """
+WITH stale AS (
+    SELECT old.SectionID
+    FROM Sections old
+    JOIN Sections cur
+      ON old.CourseID = cur.CourseID
+     AND old.SectionName = cur.SectionName
+     AND old.TermID = cur.TermID
+    WHERE cur.SectionID = ANY(%(current)s)
+      AND NOT old.SectionID = ANY(%(current)s)
+      AND NOT EXISTS (SELECT 1 FROM ObservationSignup os WHERE os.SectionID = old.SectionID)
+), assignments AS (
+    DELETE FROM TeachingAssignment ta USING stale WHERE ta.SectionID = stale.SectionID
+)
+DELETE FROM Sections s USING stale WHERE s.SectionID = stale.SectionID
+"""
+
+
 def write(conn: Any, data: ImportData) -> None:
     """Upsert the source-backed graph in one transaction."""
     with conn.transaction(), conn.cursor() as cur:
@@ -357,6 +394,9 @@ def write(conn: Any, data: ImportData) -> None:
             'INSERT INTO TeachingAssignment (SectionID, ProfessorID) VALUES (%s,%s) ON CONFLICT DO NOTHING',
             sorted(data.assignments),
         )
+        # Section IDs hash Nebula's _id, so a re-keyed source leaves the old copy behind.
+        cur.execute(MOVE_STALE_SIGNUPS_SQL, {"current": sorted(data.sections)})
+        cur.execute(STALE_SECTIONS_SQL, {"current": sorted(data.sections)})
 
 
 def main(argv: list[str] | None = None) -> int:

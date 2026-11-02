@@ -3,7 +3,7 @@ import { committeeKpis, getCommitteeOverview, hireLevel, notifyObservees, startO
 import type { CommitteeOverview } from '../api/committee'
 import { ApiError } from '../api/client'
 import type { UnmatchedFaculty } from '../api/kpis'
-import type { ObserverAlert, SelectionSignup } from '../api/observerSelection'
+import type { ObserverAlert, ObserverSelectionResult, SelectionSignup } from '../api/observerSelection'
 import { notifySurvey } from '../api/surveys'
 import DueMatchesCard from '../components/DueMatchesCard'
 import EvaluationsCard from '../components/EvaluationsTable'
@@ -21,12 +21,52 @@ const HIRE_LEVEL_DOTS: Record<HireLevel, string> = {
   Lecturer: 'bg-neutral-900',
 }
 
+interface SelectionOutcome {
+  tone: 'success' | 'warning' | 'error'
+  title: string
+  detail: string
+}
+
+const OUTCOME_STYLES: Record<SelectionOutcome['tone'], string> = {
+  success: 'border-[#3f8a55] bg-green-50 text-[#1c4532]',
+  warning: 'border-[#e0791a] bg-orange-50 text-[#8a4a10]',
+  error: 'border-[#b3261e] bg-red-50 text-[#b3261e]',
+}
+
+function summarizeSelection(result: ObserverSelectionResult): SelectionOutcome {
+  const matched = result.matched_count ?? 0
+  const unmatched = result.unmatched_count ?? 0
+  const short = (result.alerts ?? []).filter((alert) => alert.level === 'low').length
+  // Signups with requests or an observer keep their list, so this run did not touch them.
+  const kept = result.signup_count - matched - unmatched
+  if (result.signup_count === 0) {
+    return { tone: 'warning', title: 'No observers were selected', detail: 'There are no signups in this cycle yet.' }
+  }
+  if (matched + unmatched === 0) {
+    return {
+      tone: 'warning',
+      title: 'No observers were selected',
+      detail: `All ${result.signup_count} signups already have requests or an observer, so their lists were kept.`,
+    }
+  }
+  const parts = [
+    `${matched} matched`,
+    unmatched > 0 && `${unmatched} with no observers`,
+    short > 0 && `${short} with fewer than 5 observers`,
+    kept > 0 && `${kept} kept their existing list`,
+  ].filter(Boolean)
+  return unmatched > 0 || short > 0
+    ? { tone: 'warning', title: 'Observer selection finished, but some signups need attention', detail: `${parts.join(' · ')}.` }
+    : { tone: 'success', title: 'Observer selection completed successfully', detail: `${parts.join(' · ')}.` }
+}
+
 function DashboardPage({ user }: PageProps) {
   const [data, setData] = useState<CommitteeOverview | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selection, setSelection] = useState<{ signups: SelectionSignup[]; alerts: ObserverAlert[] } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [outcome, setOutcome] = useState<SelectionOutcome | null>(null)
 
   const load = () => {
     const controller = new AbortController()
@@ -45,12 +85,19 @@ function DashboardPage({ user }: PageProps) {
 
   const runSelection = async () => {
     setBusy('Selecting observers…')
+    setOutcome(null)
     try {
       const result = await startObserverSelection()
       setSelection({ signups: result.signups, alerts: result.alerts ?? [] })
+      setOutcome(summarizeSelection(result))
       setError(null)
+      load()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Observer selection failed')
+      setOutcome({
+        tone: 'error',
+        title: 'Observer selection failed',
+        detail: err instanceof ApiError ? err.message : 'The server could not be reached. No lists were changed.',
+      })
     } finally {
       setBusy(null)
     }
@@ -120,6 +167,20 @@ function DashboardPage({ user }: PageProps) {
           </button>
         </div>
       </header>
+      {outcome && (
+        <div
+          role={outcome.tone === 'success' ? 'status' : 'alert'}
+          className={`mt-3 flex items-start justify-between gap-3 rounded-md border px-3 py-2 ${OUTCOME_STYLES[outcome.tone]}`}
+        >
+          <div>
+            <p className="text-xs font-semibold">{outcome.title}</p>
+            <p className="text-[11px]">{outcome.detail}</p>
+          </div>
+          <button type="button" onClick={() => setOutcome(null)} aria-label="Dismiss" className="text-sm leading-none">
+            ×
+          </button>
+        </div>
+      )}
       {error && <p className="mt-3 text-[11px] text-[#b3261e]">{error}</p>}
       {notice && <p className="mt-3 text-[11px] text-[#3f8a55]">{notice}</p>}
       {data && !data.kpis && (

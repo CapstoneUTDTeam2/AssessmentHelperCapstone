@@ -158,3 +158,20 @@ def test_executive_dashboard(client):
             due_levels[p["current_level"] or "Unknown"] = due_levels.get(p["current_level"] or "Unknown", 0) + 1
     assert body["faculty_due_by_hire_level"] == due_levels
     assert body["unmatched_faculty_count"] == 0
+
+
+def test_eligibility_accuracy_with_named_days_on_different_days(client, lists_saved):
+    with _db() as conn:
+        conn.execute("UPDATE Sections SET MeetingDays = 'Monday,Wednesday' WHERE SectionID = 3")
+        conn.execute("UPDATE Sections SET MeetingDays = 'Tuesday,Thursday' WHERE SectionID <> 3 AND MeetingDays IN ('MW', 'TR')")
+    assert _kpis(client)["evaluation_eligibility_accuracy"]["percent"] == 100.0
+
+
+def test_eligibility_accuracy_catches_named_day_conflict(client, lists_saved):
+    with _db() as conn:
+        observer = conn.execute("SELECT ObserverProfessorID FROM SignupObserverList WHERE SignupID = 3").fetchone()[0]
+        conn.execute("UPDATE Sections SET MeetingDays = 'Monday,Wednesday' WHERE SectionID = 3")
+        conn.execute("INSERT INTO Sections VALUES (42, '004', 1, 5, 'Monday,Friday', '13:30', '14:45')")
+        conn.execute("INSERT INTO TeachingAssignment (SectionID, ProfessorID) VALUES (42, %s)", (observer,))
+    accuracy = _kpis(client)["evaluation_eligibility_accuracy"]
+    assert [i["reasons"] for i in accuracy["incorrect"]] == [["teaching during the class time"]]

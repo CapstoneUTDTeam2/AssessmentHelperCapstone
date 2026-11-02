@@ -8,7 +8,7 @@ export const isWeekend = (d: Date) => d.getUTCDay() === 0 || d.getUTCDay() === 6
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
 
 /** True when a section meeting on `days` ("MW", "TR", or "Tuesday,Thursday") meets on this date. */
-export const meetsOn = (days: string, d: Date) =>
+export const meetsOn = (days: string | null, d: Date) =>
   weekdaysFromMeetingDays(days).includes(WEEKDAY_LABELS[d.getUTCDay()] as 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri')
 
 export function businessDays(from: string, to: string) {
@@ -65,8 +65,9 @@ const WEEKDAY_FROM_TOKEN: Record<string, 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri'> 
 }
 
 /** "MW", "TR", or CourseBook "Tuesday,Thursday" → weekday labels. */
-export function weekdaysFromMeetingDays(days: string) {
-  const tokens = /[A-Za-z]{2,}/.test(days) ? days.split(/[^A-Za-z]+/).filter(Boolean) : [...days]
+export function weekdaysFromMeetingDays(days: string | null) {
+  const trimmed = (days ?? '').trim()
+  const tokens = /^[MTWRF]+$/.test(trimmed) ? [...trimmed] : trimmed.split(/[^A-Za-z]+/).filter(Boolean)
   const seen = new Set<'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri'>()
   for (const token of tokens) {
     const day = WEEKDAY_FROM_TOKEN[token.toUpperCase()]

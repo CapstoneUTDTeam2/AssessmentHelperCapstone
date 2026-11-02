@@ -144,8 +144,8 @@ def test_proposed_dates_are_checked(client, list_ready, days_after_monday, messa
 
 
 def test_past_proposed_date_is_rejected(client, list_ready):
-    last_monday = list_ready["monday"] - timedelta(days=7)
-    response = _send(client, [1], proposed_dates=[str(last_monday)])
+    past_monday = list_ready["monday"] - timedelta(days=14)
+    response = _send(client, [1], proposed_dates=[str(past_monday)])
     assert response.status_code == 400
     assert "in the past" in response.json()["detail"]
 
