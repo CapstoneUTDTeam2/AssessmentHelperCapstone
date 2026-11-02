@@ -69,6 +69,21 @@ FROM ProfessorEvaluationStatus
 GROUP BY EvaluationStatus, CurrentLevel
 """
 
+# KPI 2.1: who was due before this cycle's observations finished, and which of them signed up.
+# Finishing an observation makes a professor Not Due, so the live view would shrink the count.
+PARTICIPATION_SQL = """
+SELECT
+    COUNT(*) AS due,
+    COUNT(*) FILTER (
+        WHERE EXISTS (
+            SELECT 1 FROM ObservationSignup os
+            WHERE os.ObserveeProfessorID = s.ProfessorID AND os.CycleID = :cycle_id
+        )
+    ) AS signed_up
+FROM professor_evaluation_status(:cycle_id) s
+WHERE s.EvaluationStatus IN ('Due', 'Overdue')
+"""
+
 CYCLE_FACTS_SQL = """
 SELECT
     (SELECT COUNT(DISTINCT os.ObserveeProfessorID) FROM ObservationSignup os WHERE os.CycleID = :cycle_id) AS signed_up,
@@ -223,11 +238,11 @@ def get_kpis(cycle_id: int | None = Query(default=None, description="Defaults to
         cid = cycle["cycleid"]
         status_rows = conn.execute(text(STATUS_COUNTS_SQL)).mappings().all()
         facts = conn.execute(text(CYCLE_FACTS_SQL), {"cycle_id": cid}).mappings().first()
+        participation = conn.execute(text(PARTICIPATION_SQL), {"cycle_id": cid}).mappings().first()
         missing = conn.execute(text(MISSING_SQL), {"cycle_id": cid, "today": today}).mappings().all()
         full_process = conn.execute(text(FULL_PROCESS_SQL), {"cycle_id": cid}).scalar_one()
         accuracy = eligibility_accuracy(conn, cid)
 
-    due = sum(_level_counts(status_rows, ("Due", "Overdue")).values())
     overdue = sum(_level_counts(status_rows, ("Overdue",)).values())
     return {
         "cycle_id": cid,
@@ -236,9 +251,9 @@ def get_kpis(cycle_id: int | None = Query(default=None, description="Defaults to
         "evaluation_eligibility_accuracy": accuracy,
         "overdue_evaluation_count": {"count": overdue},
         "assessment_participation_rate": {
-            "signed_up": facts["signed_up"],
-            "due": due,
-            "percent": _rate(facts["signed_up"], due),
+            "signed_up": participation["signed_up"],
+            "due": participation["due"],
+            "percent": _rate(participation["signed_up"], participation["due"]),
         },
         "observer_utilization_rate": {
             "observers": facts["observers"],

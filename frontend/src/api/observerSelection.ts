@@ -10,13 +10,25 @@ export interface SelectionSignup {
   signup_id: number
   professor_id: number
   professor_name: string
+  professor_email: string | null
   course_code: string
   course_name: string
   section_id: number
   section_name: string
+  meeting_days: string | null
+  start_time: string | null
+  end_time: string | null
   status: string
   observers: ListedObserver[]
   eligible_count?: number
+}
+
+export interface SelectionSignupList {
+  cycle_id: number
+  semester: string
+  year: number
+  signup_count: number
+  signups: SelectionSignup[]
 }
 
 export interface ObserverAlert {
@@ -68,6 +80,11 @@ export interface ObserveeNotification {
 
 export function getObserverAlerts(signal?: AbortSignal) {
   return apiGet<ObserverAlerts>('/api/observer-selection/alerts', undefined, signal)
+}
+
+/** Every signup in the cycle with its real status and saved observer list. */
+export function getSelectionSignups(signal?: AbortSignal) {
+  return apiGet<SelectionSignupList>('/api/observer-selection/signups', undefined, signal)
 }
 
 export function startObserverSelection(signal?: AbortSignal) {

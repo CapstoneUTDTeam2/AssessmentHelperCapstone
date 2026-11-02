@@ -26,8 +26,12 @@ SIGNUP_COLUMNS = """
     os.cycleid,
     os.status,
     p.professorname,
+    p.email,
     s.sectionid,
     s.sectionname,
+    s.meetingdays,
+    s.starttime,
+    s.endtime,
     c.coursecode,
     c.coursename,
     (
@@ -161,15 +165,23 @@ def _alert_for(signup, eligible_count):
     }
 
 
+def _time_str(value):
+    return value.strftime("%H:%M") if value is not None else None
+
+
 def _signup_summary(signup, status, observers, eligible_count=None):
     summary = {
         "signup_id": signup["signupid"],
         "professor_id": signup["observeeprofessorid"],
         "professor_name": signup["professorname"],
+        "professor_email": signup["email"],
         "course_code": signup["coursecode"],
         "course_name": signup["coursename"],
         "section_id": signup["sectionid"],
         "section_name": signup["sectionname"],
+        "meeting_days": signup["meetingdays"],
+        "start_time": _time_str(signup["starttime"]),
+        "end_time": _time_str(signup["endtime"]),
         "status": status,
         "observers": observers,
     }
@@ -184,6 +196,22 @@ def _cycle_info(cycle):
 
 def _cycle_signups(conn, cycle):
     return conn.execute(text(CYCLE_SIGNUPS_SQL), {"cycle_id": cycle["cycleid"]}).mappings().all()
+
+
+# What: every signup in the cycle with its real status and saved observer list, for the committee.
+@router.get("/observer-selection/signups")
+def list_selection_signups(
+    cycle_id: int | None = Query(default=None, description="Defaults to the current cycle"),
+):
+    # Input: optional cycle_id
+    # Output: each signup's course, section, meeting time, observee, status, and saved list
+    with engine.connect() as conn:
+        cycle = resolve_cycle(conn, cycle_id)
+        signups = [
+            _signup_summary(signup, signup["status"], saved_observers(conn, signup["signupid"]))
+            for signup in _cycle_signups(conn, cycle)
+        ]
+    return {**_cycle_info(cycle), "signup_count": len(signups), "signups": signups}
 
 
 # What: committee starts observer selection for the cycle (AHC-247).
