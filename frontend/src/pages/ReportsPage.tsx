@@ -25,10 +25,11 @@ const STATUS_PILLS: Record<ReportStatus, string> = {
   'Awaiting sign-off': 'bg-[#e0791a]',
   'Signed off': 'bg-[#3f8a55]',
   'Report overdue': 'bg-[#b3261e]',
+  'Not held': 'bg-[#b3261e]',
   'No report': 'bg-neutral-500',
 }
 
-type FilterKey = 'all' | 'scheduled' | 'awaiting' | 'signed' | 'overdue'
+type FilterKey = 'all' | 'scheduled' | 'awaiting' | 'signed' | 'overdue' | 'notHeld'
 
 const FILTERS: { key: FilterKey; label: string; match: (r: ReportRow) => boolean }[] = [
   { key: 'all', label: 'All reports', match: () => true },
@@ -36,6 +37,7 @@ const FILTERS: { key: FilterKey; label: string; match: (r: ReportRow) => boolean
   { key: 'awaiting', label: 'Awaiting sign-off', match: (r) => r.status === 'Awaiting sign-off' },
   { key: 'signed', label: 'Signed off', match: (r) => r.status === 'Signed off' },
   { key: 'overdue', label: 'Report overdue', match: (r) => r.status === 'Report overdue' },
+  { key: 'notHeld', label: 'Not held', match: (r) => r.status === 'Not held' },
 ]
 
 type SortKey = 'professor' | 'level' | 'date' | 'status'
@@ -47,6 +49,7 @@ const DATE_RANK: Record<ReportStatus, number> = {
   'Awaiting sign-off': 0,
   'Signed off': 0,
   'Report overdue': 0,
+  'Not held': 0,
   'No report': 1,
 }
 
@@ -163,7 +166,7 @@ function ReportsPage({ navigate }: PageProps) {
           <h1 className="text-xl font-semibold text-neutral-900">Reports</h1>
           <p className="mt-1 text-xs text-neutral-500">
             {term || 'Current cycle'} · {count('Signed off')} signed off · {count('Awaiting sign-off')} awaiting
-            sign-off · {count('Report overdue')} reports overdue · {count('No report')} without an observer
+            sign-off · {count('Report overdue')} reports overdue · {count('Not held')} not held · {count('No report')} without an observer
           </p>
           {error && <p className="mt-1 text-[11px] text-[#b3261e]">{error}</p>}
         </div>

@@ -430,7 +430,7 @@ function evaluationEvents(history: ProfessorObservations | null, nextEvaluation:
     subtitle: o.locked ? 'Signed by both' : o.observer_signed || o.observee_signed ? 'Awaiting a signature' : o.status,
     kind,
   })
-  const isPast = ({ o }: (typeof rows)[number]) => o.locked || (o.observation_date ?? '') < today
+  const isPast = ({ o }: (typeof rows)[number]) => o.locked || o.not_held || (o.observation_date ?? '') < today
   const upcoming = rows.filter((r) => !isPast(r)).map(toEvent)
   if (nextEvaluation && nextEvaluation !== '—') {
     upcoming.push({ date: nextEvaluation, title: 'Formal evaluation due', subtitle: 'From the evaluation cycle', kind: 'Evaluation' })

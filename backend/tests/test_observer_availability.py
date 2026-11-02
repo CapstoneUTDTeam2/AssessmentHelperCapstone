@@ -51,7 +51,7 @@ def test_get_availability_none_yet(client):
     assert body["enrollment_status"] is None
 
 
-def test_set_availability_saves_and_enrolls(client):
+def test_set_availability_saves_hours(client):
     day_off = _campus_today() + timedelta(days=10)
     response = client.put(
         "/api/observers/5/availability",
@@ -67,7 +67,7 @@ def test_set_availability_saves_and_enrolls(client):
     body = response.json()
     assert [slot["weekday"] for slot in body["weekly"]] == ["T", "R"]
     assert body["unavailable_dates"] == [str(day_off)]
-    assert body["enrollment_status"] == "Active"
+    assert body["enrollment_status"] is None
     assert client.get("/api/observers/5/availability").json() == body
 
 
@@ -286,3 +286,27 @@ def test_named_thursday_class_blocks_a_thursday_date(client, fresh_signups):
         conn.execute("INSERT INTO Sections VALUES (98, '002', 1, 5, 'Tuesday,Thursday', '13:00', '14:15')")
         conn.execute("INSERT INTO TeachingAssignment (SectionID, ProfessorID) VALUES (98, %s)", (observer_id,))
     assert observer_id not in _db_eligible_ids(3)
+
+
+# Only signing up joins the observer pool.
+
+def test_saving_availability_does_not_join_the_pool(client):
+    response = client.put(
+        "/api/observers/5/availability",
+        json={"weekly": [{"weekday": "T", "start_time": "09:00", "end_time": "12:00"}]},
+    )
+    assert response.status_code == 200
+    assert response.json()["enrollment_status"] is None
+    pool = client.get("/api/observer-pool").json()["observers"]
+    assert 5 not in [observer["professor_id"] for observer in pool]
+
+
+def test_saved_hours_apply_once_they_sign_up(client):
+    client.put(
+        "/api/observers/5/availability",
+        json={"weekly": [{"weekday": "T", "start_time": "09:00", "end_time": "12:00"}]},
+    )
+    assert client.post("/api/signups", json={"professor_id": 5, "section_id": 6}).status_code == 201
+    body = client.get("/api/observers/5/availability").json()
+    assert body["enrollment_status"] == "Active"
+    assert [slot["weekday"] for slot in body["weekly"]] == ["T"]

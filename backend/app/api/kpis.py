@@ -99,14 +99,16 @@ SELECT
 
 MISSING_SQL = """
 SELECT o.observationid, o.signupid, ee.professorname AS observee, obs.professorname AS observer,
-       COALESCE(o.ObservationDate, o.ScheduledDate) AS planned, o.status
+       COALESCE(o.ObservationDate, o.ScheduledDate) AS planned, o.status, o.notheldreason
 FROM Observation o
 JOIN ObservationSignup os ON o.SignupID = os.SignupID
 JOIN Professors ee ON o.ObserveeID = ee.ProfessorID
 JOIN Professors obs ON o.ObserverProfessorID = obs.ProfessorID
 WHERE os.CycleID = :cycle_id
-  AND o.Status IS DISTINCT FROM 'Completed'
-  AND COALESCE(o.ObservationDate, o.ScheduledDate) < :today
+  AND (
+      o.Status = 'Not Held'
+      OR (o.Status IS DISTINCT FROM 'Completed' AND COALESCE(o.ObservationDate, o.ScheduledDate) < :today)
+  )
 ORDER BY planned, o.ObservationID
 """
 
@@ -129,7 +131,7 @@ SELECT ee.CurrentLevel AS level, COUNT(*) AS n
 FROM Observation o
 JOIN ObservationSignup os ON o.SignupID = os.SignupID
 JOIN Professors ee ON o.ObserveeID = ee.ProfessorID
-WHERE os.CycleID = :cycle_id AND o.Status IS DISTINCT FROM 'Completed'
+WHERE os.CycleID = :cycle_id AND o.Status IS DISTINCT FROM 'Completed' AND o.Status IS DISTINCT FROM 'Not Held'
 GROUP BY ee.CurrentLevel
 """
 
@@ -276,6 +278,7 @@ def get_kpis(cycle_id: int | None = Query(default=None, description="Defaults to
                     "observer": m["observer"],
                     "planned_date": m["planned"].isoformat() if m["planned"] else None,
                     "status": m["status"],
+                    "reason": m["notheldreason"],
                 }
                 for m in missing
             ],

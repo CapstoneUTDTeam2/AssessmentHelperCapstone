@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ApiError } from '../api/client'
-import { getObservation, NOT_APPLICABLE, saveObserveeComments, saveRatings, signObservation } from '../api/observations'
+import {
+  getObservation,
+  NOT_APPLICABLE,
+  reportNotHeld,
+  saveObserveeComments,
+  saveRatings,
+  signObservation,
+} from '../api/observations'
 import type { ObservationCriterion, ObservationReport, RatingOption } from '../api/observations'
 import { getTemplate } from '../api/templates'
 import type { TemplateSection } from '../api/templates'
@@ -155,12 +162,16 @@ function Report({
   const [busy, setBusy] = useState(false)
   const [savedAt, setSavedAt] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [reporting, setReporting] = useState(false)
+  const [notHeldReason, setNotHeldReason] = useState('')
 
   const anySigned = report.observer_signed || report.observee_signed
   // The backend locks ratings once anyone signs.
-  const editable = role === 'observer' && !anySigned && !report.locked
+  const editable = role === 'observer' && !anySigned && !report.locked && !report.not_held
   const mySignature = role === 'observer' ? report.observer_signed : role === 'observee' ? report.observee_signed : true
-  const canSign = role !== 'viewer' && !mySignature && !report.locked
+  const canSign = role !== 'viewer' && !mySignature && !report.locked && !report.not_held
+  // Signatures mean the observation happened, so it can only be reported before anyone signs.
+  const canReportNotHeld = role === 'observee' && !anySigned && !report.locked && !report.not_held
   const happened = report.observation_date !== null && report.observation_date <= todayIso()
   // The observee reviews the finished form and can respond to each rating until they sign.
   const canComment = role === 'observee' && canSign && happened && report.missing.length === 0
@@ -239,6 +250,19 @@ function Report({
     }
   }
 
+  const submitNotHeld = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      onChange(await reportNotHeld(report.observation_id, { observee_id: professorId!, reason: notHeldReason.trim() }))
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch (err) {
+      setError(errorText(err, 'Reporting failed'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const steps = [
     { title: 'Observer fills in the form', detail: report.observer_name },
     { title: 'Both sign', detail: 'Observer and observee' },
@@ -297,6 +321,15 @@ function Report({
       )}
 
       <Steps steps={steps} current={step} />
+
+      {report.not_held && (
+        <div role="status" className="mt-4 rounded-lg bg-[#fde8e6] px-4 py-3 text-xs text-[#b3261e]">
+          <p className="font-medium">Reported as not happening</p>
+          <p className="mt-0.5 text-[11px]">
+            {report.observee_name} reported that this observation could not happen: {report.not_held_reason}
+          </p>
+        </div>
+      )}
 
       {report.locked ? (
         <div className="mt-4 rounded-lg bg-[#e3efe6] px-4 py-3 text-xs text-[#1c4532]">
@@ -478,6 +511,55 @@ function Report({
             </>
           )}
         </section>
+
+        {canReportNotHeld && (
+          <section className={card}>
+            <h2 className="text-sm font-semibold text-neutral-900">Observation couldn’t happen?</h2>
+            <p className="mt-0.5 text-[11px] text-neutral-500">
+              Use this only if the observation could not take place this cycle. It closes this report, can’t be undone, and
+              is counted as a missing observation.
+            </p>
+            {reporting ? (
+              <>
+                <Field label="What happened?" className="mt-3">
+                  <textarea
+                    rows={3}
+                    value={notHeldReason}
+                    onChange={(e) => setNotHeldReason(e.target.value)}
+                    placeholder="Why the observation could not happen…"
+                    className={input}
+                  />
+                </Field>
+                <div className="mt-3 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setReporting(false)}
+                    disabled={busy}
+                    className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 hover:bg-neutral-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={submitNotHeld}
+                    disabled={busy || !notHeldReason.trim()}
+                    className="rounded-md bg-[#b3261e] px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+                  >
+                    Submit report
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setReporting(true)}
+                className="mt-3 rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs text-[#b3261e] hover:bg-neutral-50"
+              >
+                Report that it didn’t happen
+              </button>
+            )}
+          </section>
+        )}
       </div>
     </main>
   )

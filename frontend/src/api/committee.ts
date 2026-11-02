@@ -65,6 +65,7 @@ function toRow(
   row.session = `${observation.course_code}.${observation.section_name}${date ? ` · ${date}` : ''}`
   if (date) row.due = date
   if (observation.status === 'Completed') row.status = 'Completed'
+  else if (observation.not_held) row.status = 'Not held'
   else if (date && date < today) row.status = 'Report overdue'
   else row.status = 'Confirmed'
   return row

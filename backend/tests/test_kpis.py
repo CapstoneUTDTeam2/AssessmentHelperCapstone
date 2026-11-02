@@ -144,6 +144,12 @@ def test_list_sufficiency(client, lists_saved):
 
 
 def test_missing_observation_count(client):
+    with _db() as conn:
+        # The sample dates pass as real time goes by, so start with both still upcoming.
+        conn.execute(
+            "UPDATE Observation SET ScheduledDate = %s, ObservationDate = %s WHERE ObservationID IN (3, 4)",
+            (_today() + timedelta(days=2), _today() + timedelta(days=2)),
+        )
     assert _kpis(client)["missing_observation_count"]["count"] == 0
     with _db() as conn:
         conn.execute(
@@ -215,3 +221,29 @@ def test_eligibility_accuracy_catches_named_day_conflict(client, lists_saved):
         conn.execute("INSERT INTO TeachingAssignment (SectionID, ProfessorID) VALUES (42, %s)", (observer,))
     accuracy = _kpis(client)["evaluation_eligibility_accuracy"]
     assert [i["reasons"] for i in accuracy["incorrect"]] == [["teaching during the class time"]]
+
+
+def test_not_held_counts_as_missing_right_away(client):
+    with _db() as conn:
+        conn.execute(
+            "UPDATE Observation SET ScheduledDate = %s, ObservationDate = %s WHERE ObservationID IN (3, 4)",
+            (_today() + timedelta(days=2), _today() + timedelta(days=2)),
+        )
+    assert _kpis(client)["missing_observation_count"]["count"] == 0
+    client.post("/api/observations/3/not-held", json={"observee_id": 3, "reason": "Class was cancelled."})
+    missing = _kpis(client)["missing_observation_count"]
+    assert missing["count"] == 1
+    assert missing["observations"][0]["status"] == "Not Held"
+    assert missing["observations"][0]["reason"] == "Class was cancelled."
+
+
+def test_not_held_is_not_an_outstanding_report(client):
+    before = client.get("/api/dashboard/executive").json()["outstanding_reports_by_hire_level"]
+    client.post("/api/observations/3/not-held", json={"observee_id": 3, "reason": "Class was cancelled."})
+    after = client.get("/api/dashboard/executive").json()["outstanding_reports_by_hire_level"]
+    assert sum(after.values()) == sum(before.values()) - 1
+
+
+def test_not_held_does_not_count_as_evaluated(client, carol_due):
+    client.post("/api/observations/3/not-held", json={"observee_id": 3, "reason": "Class was cancelled."})
+    assert _status("ProfessorEvaluationStatus") == "Due"

@@ -4,6 +4,7 @@ import type { EvaluationRow, EvaluationStatus } from '../data/dashboardMock'
 const STATUS_STYLES: Record<EvaluationStatus, string> = {
   Overdue: 'bg-[#b3261e]',
   'Report overdue': 'bg-[#b3261e]',
+  'Not held': 'bg-[#b3261e]',
   Unmatched: 'bg-neutral-500',
   Pending: 'bg-[#e0791a]',
   Confirmed: 'bg-[#3f8a55]',

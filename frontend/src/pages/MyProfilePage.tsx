@@ -258,7 +258,7 @@ function CurrentCoursesCard({ courses, termLabel }: { courses: CurrentCourse[]; 
                   <td className="px-2 py-2">
                     {observation?.observation_date ? (
                       <span className="rounded-full bg-[#e0791a] px-2 py-0.5 text-[9px] font-medium whitespace-nowrap text-white">
-                        {observation.locked ? 'Observed' : 'Scheduled'} {formatDay(observation.observation_date)}
+                        {observation.not_held ? 'Not held' : observation.locked ? 'Observed' : 'Scheduled'} {formatDay(observation.observation_date)}
                       </span>
                     ) : (
                       <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[9px] whitespace-nowrap text-neutral-600">

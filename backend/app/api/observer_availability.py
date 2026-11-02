@@ -51,13 +51,6 @@ INSERT INTO ObserverUnavailableDate (ProfessorID, CycleID, UnavailableDate)
 VALUES (:professor_id, :cycle_id, :unavailable_date)
 """
 
-# Entering availability means the professor wants to observe, so they join the pool if they aren't in it.
-ENROLL_SQL = """
-INSERT INTO ObserverEnrollment (ProfessorID, CycleID)
-VALUES (:professor_id, :cycle_id)
-ON CONFLICT (ProfessorID, CycleID) DO NOTHING
-"""
-
 
 class WeeklySlot(BaseModel):
     weekday: str
@@ -166,5 +159,4 @@ def set_observer_availability(professor_id: int, request: AvailabilityRequest):
             )
         for unavailable in sorted(set(request.unavailable_dates)):
             conn.execute(text(INSERT_UNAVAILABLE_SQL), {**params, "unavailable_date": unavailable})
-        conn.execute(text(ENROLL_SQL), params)
         return _availability_payload(conn, professor, cycle)

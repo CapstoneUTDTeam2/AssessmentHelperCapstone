@@ -93,7 +93,8 @@ export default function AvailabilityEditor({ professorId }: { professorId: numbe
     <div>
       {loaded.enrollment_status === null && (
         <Notice title="You’re not in the observer pool yet" tone="warn">
-          Saving your availability adds you to the observer pool for {loaded.semester} {loaded.year}.
+          Signing up to be observed adds you to the observer pool for {loaded.semester} {loaded.year}. The hours you save
+          here will be used then.
         </Notice>
       )}
       {WEEKDAYS.map((d) => {

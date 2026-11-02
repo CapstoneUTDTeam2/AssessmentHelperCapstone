@@ -21,6 +21,7 @@ def test_full_cycle(client, monkeypatch):
         conn.execute("INSERT INTO Professors VALUES (500, 'Bio Observer', 4, 'Full Professor', 1)")
         conn.execute("INSERT INTO Sections VALUES (50, '002', 6, 4, 'TR', '09:00', '10:15')")  # BIOL 1301 last spring
         conn.execute("INSERT INTO TeachingAssignment (SectionID, ProfessorID) VALUES (50, 500)")
+        conn.execute("INSERT INTO ObserverEnrollment (ProfessorID, CycleID) VALUES (500, 2)")
     assert client.put(
         "/api/observers/500/availability",
         json={"weekly": [{"weekday": "T", "start_time": "08:00", "end_time": "17:00"},

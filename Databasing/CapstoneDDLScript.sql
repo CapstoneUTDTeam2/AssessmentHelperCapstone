@@ -274,6 +274,8 @@ CREATE TABLE Observation (
     Notes Text,
     ObserveeID INT NOT NULL,
     ObservationTime TIME,
+    -- Why the observee reported that this observation could not happen (Status 'Not Held')
+    NotHeldReason TEXT,
     foreign key (ObserverProfessorID) references Professors(ProfessorID),
     foreign key (SignupID) references ObservationSignup(SignupID),
     foreign key (ObserveeID) references Professors(ProfessorID),
