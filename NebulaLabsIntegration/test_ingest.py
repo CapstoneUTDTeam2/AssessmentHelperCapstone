@@ -1,9 +1,21 @@
 import unittest
 
-from ingest import IngestionError, meeting_values, parse_term, pseudonym, stable_int
+from ingest import IngestionError, meeting_values, parse_term, professor_key, pseudonym, stable_int
 
 
 class IngestUnitTests(unittest.TestCase):
+    def test_professor_key_survives_a_new_nebula_id(self):
+        doc = {"email": "Ada.Lovelace@utdallas.edu", "first_name": "Ada", "last_name": "Lovelace"}
+        first = professor_key(doc, "old-id", "secret")
+        self.assertEqual(first, professor_key({**doc, "email": "ada.lovelace@utdallas.edu"}, "new-id", "secret"))
+        self.assertNotEqual(first, professor_key(doc, "old-id", "other-secret"))
+        self.assertNotIn("ada", first.casefold())
+
+    def test_professor_key_falls_back_to_name_then_id(self):
+        by_name = professor_key({"first_name": "Ada", "last_name": "Lovelace"}, "a", "secret")
+        self.assertEqual(by_name, professor_key({"first_name": "ada", "last_name": "lovelace"}, "b", "secret"))
+        self.assertNotEqual(professor_key({}, "a", "secret"), professor_key({}, "b", "secret"))
+
     def test_pseudonym_is_stable_keyed_and_contains_no_name(self):
         first = pseudonym("source-id", "secret-one")
         self.assertEqual(first, pseudonym("source-id", "secret-one"))

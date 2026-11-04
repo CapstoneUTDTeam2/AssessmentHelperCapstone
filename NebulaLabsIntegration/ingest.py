@@ -38,6 +38,17 @@ def stable_int(namespace: str, value: str) -> int:
     return int.from_bytes(digest[:4], "big") & 0x7FFFFFFF or 1
 
 
+def professor_key(professor: dict[str, Any], source_id: str, key: str) -> str:
+    """Keyed hash of the professor's email (or name), which survives Nebula re-keying its _id.
+
+    Only the hash is kept, so the email and name never reach the database.
+    """
+    email = str(professor.get("email") or "").strip().casefold()
+    name = " ".join(str(professor.get(part) or "").strip() for part in ("first_name", "last_name")).strip().casefold()
+    identity = f"email:{email}" if email else f"name:{name}" if name else f"id:{source_id}"
+    return hmac.new(key.encode(), identity.encode(), hashlib.sha256).hexdigest()
+
+
 def pseudonym(source_id: str, key: str) -> str:
     """Produce a stable, non-name-derived replacement identity."""
     token = hmac.new(key.encode(), source_id.encode(), hashlib.sha256).hexdigest()[:12]
@@ -258,6 +269,21 @@ def collect(client: NebulaClient, prefix: str, requested_term: str, anon_key: st
         for future in as_completed(pending):
             section_pages[pending[future]] = future.result() or []
 
+    # Nebula's professor _id changes when its data is rebuilt, so key professors on who they are.
+    source_professors = {
+        source_prof_id
+        for course in candidates
+        for section in section_pages.get(course.get("_id"), [])
+        if str((section.get("academic_session") or {}).get("name") or "").casefold() in wanted_names
+        for source_prof_id in section.get("professors") or []
+    }
+    professor_keys: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        pending = {pool.submit(client.get, f"/professor/{source_id}"): source_id for source_id in source_professors}
+        for future in as_completed(pending):
+            source_id = pending[future]
+            professor_keys[source_id] = professor_key(future.result() or {}, source_id, anon_key)
+
     for course in candidates:
         source_course_id = course.get("_id")
         if not source_course_id:
@@ -284,7 +310,7 @@ def collect(client: NebulaClient, prefix: str, requested_term: str, anon_key: st
                 str(section.get("section_number") or "")[:5], cid, result.term[0], days, start, end
             )
             for source_prof_id in section.get("professors") or []:
-                pid = register("professor", source_prof_id)
+                pid = register("professor", professor_keys[source_prof_id])
                 result.professors[pid] = (pseudonym(source_prof_id, anon_key), dept[0])
                 result.assignments.add((sid, pid))
 
@@ -327,6 +353,33 @@ WHERE os.SectionID = old.SectionID
       SELECT 1 FROM TeachingAssignment ta
       WHERE ta.SectionID = cur.SectionID AND ta.ProfessorID = os.ObserveeProfessorID
   )
+"""
+
+# A professor re-keyed by an older import: drop their stale assignments to imported sections,
+# unless a signup depends on one, then drop the professor if nothing else refers to them.
+STALE_ASSIGNMENTS_SQL = """
+DELETE FROM TeachingAssignment ta
+WHERE ta.SectionID = ANY(%(sections)s)
+  AND NOT ta.ProfessorID = ANY(%(professors)s)
+  AND NOT EXISTS (
+      SELECT 1 FROM ObservationSignup os
+      WHERE os.SectionID = ta.SectionID AND os.ObserveeProfessorID = ta.ProfessorID
+  )
+"""
+
+STALE_PROFESSORS_SQL = """
+DELETE FROM Professors p
+WHERE p.ProfessorDepartment = %(department)s
+  AND NOT p.ProfessorID = ANY(%(professors)s)
+  AND NOT EXISTS (SELECT 1 FROM TeachingAssignment x WHERE x.ProfessorID = p.ProfessorID)
+  AND NOT EXISTS (SELECT 1 FROM ObservationSignup x WHERE x.ObserveeProfessorID = p.ProfessorID)
+  AND NOT EXISTS (SELECT 1 FROM ObserverRequest x WHERE x.ObserverProfessorID = p.ProfessorID)
+  AND NOT EXISTS (SELECT 1 FROM Observation x WHERE x.ObserverProfessorID = p.ProfessorID OR x.ObserveeID = p.ProfessorID)
+  AND NOT EXISTS (SELECT 1 FROM PostObservationSurveyResponse x WHERE x.ProfessorID = p.ProfessorID)
+  AND NOT EXISTS (SELECT 1 FROM ObserverEnrollment x WHERE x.ProfessorID = p.ProfessorID)
+  AND NOT EXISTS (SELECT 1 FROM ObserverAvailability x WHERE x.ProfessorID = p.ProfessorID)
+  AND NOT EXISTS (SELECT 1 FROM ObserverUnavailableDate x WHERE x.ProfessorID = p.ProfessorID)
+  AND NOT EXISTS (SELECT 1 FROM SignupObserverList x WHERE x.ObserverProfessorID = p.ProfessorID)
 """
 
 # Signups that could not move keep their old section.
@@ -397,6 +450,9 @@ def write(conn: Any, data: ImportData) -> None:
         # Section IDs hash Nebula's _id, so a re-keyed source leaves the old copy behind.
         cur.execute(MOVE_STALE_SIGNUPS_SQL, {"current": sorted(data.sections)})
         cur.execute(STALE_SECTIONS_SQL, {"current": sorted(data.sections)})
+        current = {"sections": sorted(data.sections), "professors": sorted(data.professors), "department": data.department[0]}
+        cur.execute(STALE_ASSIGNMENTS_SQL, current)
+        cur.execute(STALE_PROFESSORS_SQL, current)
 
 
 def main(argv: list[str] | None = None) -> int:
