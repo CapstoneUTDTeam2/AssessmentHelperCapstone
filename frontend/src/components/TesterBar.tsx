@@ -329,7 +329,7 @@ function TesterBar({ user, onUser, onReload }: TesterBarProps) {
               <select
                 value={professorId}
                 onChange={(e) => switchProfessor(Number(e.target.value))}
-                className="max-w-64 rounded border border-neutral-300 bg-white px-2 py-1"
+                className="w-64 rounded border border-neutral-300 bg-white px-2 py-1"
               >
                 {visible.map((row) => (
                   <option key={row.professor_id} value={row.professor_id}>
