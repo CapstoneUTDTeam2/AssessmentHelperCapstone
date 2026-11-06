@@ -5,6 +5,7 @@ import { getProfessorObservations } from '../api/observations'
 import type { ProfessorObservations } from '../api/observations'
 import type { EligibleObserver } from '../api/signups'
 import { downloadCsv } from '../utils/csv'
+import { compareFacultyStatus } from '../utils/facultySort'
 import { matchesSearch } from '../utils/search'
 import type { CurrentTerm } from '../api/evaluationStatus'
 import { LEVEL_COLORS } from '../theme'
@@ -57,9 +58,10 @@ const FILTERS: { key: FilterKey; label: string; title: string; match: (f: Facult
   },
 ]
 
-type SortKey = 'next' | 'name' | 'level' | 'courses' | 'observations'
+type SortKey = 'status' | 'next' | 'name' | 'level' | 'courses' | 'observations'
 
 const SORT_LABELS: Record<SortKey, string> = {
+  status: 'Evaluation status',
   next: 'Next evaluation',
   name: 'Name',
   level: 'Level',
@@ -68,6 +70,7 @@ const SORT_LABELS: Record<SortKey, string> = {
 }
 
 const COMPARATORS: Record<SortKey, (a: FacultyMember, b: FacultyMember) => number> = {
+  status: compareFacultyStatus,
   next: (a, b) => a.nextEvaluationDate.localeCompare(b.nextEvaluationDate),
   name: (a, b) => a.name.localeCompare(b.name),
   level: (a, b) => a.level.localeCompare(b.level),
@@ -80,7 +83,7 @@ const COLUMNS: { label: string; sortKey: SortKey }[] = [
   { label: 'Level', sortKey: 'level' },
   { label: 'Courses', sortKey: 'courses' },
   { label: 'Observations this cycle', sortKey: 'observations' },
-  { label: 'Evaluation status', sortKey: 'next' },
+  { label: 'Evaluation status', sortKey: 'status' },
 ]
 
 type LoadState =
