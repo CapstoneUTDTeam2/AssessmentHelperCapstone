@@ -2,43 +2,56 @@ import { describe, expect, it } from 'vitest'
 import type { EvaluationRow, EvaluationStatus } from '../../data/dashboardMock'
 import { compareEvaluationRows } from '../evaluationSort'
 
-const row = (faculty: string, status: EvaluationStatus, due: string, observer: string | null = null): EvaluationRow => ({
+const row = (faculty: string, status: EvaluationStatus, extra: Partial<EvaluationRow> = {}): EvaluationRow => ({
   id: faculty.length,
   faculty,
   level: 'Assistant',
-  observer,
-  session: 'Fall 2026',
-  due,
+  dueTerm: 'Fall 2026',
+  dueKey: '2026-2',
+  lastEvaluation: null,
+  signup: 'none',
+  observer: null,
+  observation: null,
+  observationDate: null,
   status,
   group: 'outstanding',
+  ...extra,
 })
 
-const names = (rows: EvaluationRow[]) => rows.map((r) => r.faculty)
+const sortBy = (rows: EvaluationRow[], key: Parameters<typeof compareEvaluationRows>[2]) =>
+  rows.sort((a, b) => compareEvaluationRows(a, b, key)).map((r) => r.faculty)
 
 describe('compareEvaluationRows', () => {
   it('sorts status by urgency, not alphabetically', () => {
     const rows = [
-      row('A', 'Completed', '2026-10-01'),
-      row('B', 'Confirmed', '2026-10-01'),
-      row('C', 'Overdue', '2026-10-01'),
-      row('D', 'Pending', '2026-10-01'),
-      row('E', 'Not held', '2026-10-01'),
+      row('A', 'Completed'),
+      row('B', 'Confirmed'),
+      row('C', 'Overdue'),
+      row('D', 'Needs observer'),
+      row('E', 'Not held'),
+      row('F', 'Not signed up'),
     ]
-    expect(names(rows.sort((a, b) => compareEvaluationRows(a, b, 'status')))).toEqual(['C', 'E', 'D', 'B', 'A'])
+    expect(sortBy(rows, 'status')).toEqual(['C', 'E', 'F', 'D', 'B', 'A'])
   })
 
-  it('sorts session by its date', () => {
-    const rows = [row('A', 'Pending', '2026-11-20'), row('B', 'Pending', '2026-08-01'), row('C', 'Pending', '2026-10-05')]
-    expect(names(rows.sort((a, b) => compareEvaluationRows(a, b, 'session')))).toEqual(['B', 'C', 'A'])
+  it('sorts the due semester in time order', () => {
+    const rows = [row('A', 'Overdue', { dueKey: '2026-2' }), row('B', 'Overdue', { dueKey: '2025-1' }), row('C', 'Overdue', { dueKey: '2026-1' })]
+    expect(sortBy(rows, 'due')).toEqual(['B', 'C', 'A'])
   })
 
-  it('puts rows with no observer last', () => {
-    const rows = [row('A', 'Pending', '2026-10-01'), row('B', 'Confirmed', '2026-10-01', 'Zed'), row('C', 'Confirmed', '2026-10-01', 'Amy')]
-    expect(names(rows.sort((a, b) => compareEvaluationRows(a, b, 'observer')))).toEqual(['C', 'B', 'A'])
+  it('puts missing last evaluations, observers and observation dates last', () => {
+    const rows = [
+      row('A', 'Overdue'),
+      row('B', 'Confirmed', { lastEvaluation: '2025-10-14', observer: 'Zed', observationDate: '2026-10-20' }),
+      row('C', 'Confirmed', { lastEvaluation: '2024-03-15', observer: 'Amy', observationDate: '2026-10-05' }),
+    ]
+    expect(sortBy([...rows], 'lastEvaluation')).toEqual(['C', 'B', 'A'])
+    expect(sortBy([...rows], 'observer')).toEqual(['C', 'B', 'A'])
+    expect(sortBy([...rows], 'observation')).toEqual(['C', 'B', 'A'])
   })
 
-  it('breaks ties by due date, then name', () => {
-    const rows = [row('B', 'Overdue', '2026-10-01'), row('A', 'Overdue', '2026-10-01'), row('C', 'Overdue', '2026-09-01')]
-    expect(names(rows.sort((a, b) => compareEvaluationRows(a, b, 'status')))).toEqual(['C', 'A', 'B'])
+  it('breaks ties by due semester, then name', () => {
+    const rows = [row('B', 'Overdue'), row('A', 'Overdue'), row('C', 'Overdue', { dueKey: '2025-2' })]
+    expect(sortBy(rows, 'status')).toEqual(['C', 'A', 'B'])
   })
 })

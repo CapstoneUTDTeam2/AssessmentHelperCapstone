@@ -40,11 +40,21 @@ const LEVEL_OPTIONS: ('All levels' | FacultyLevel)[] = [
 
 type FilterKey = 'due' | 'overdue' | 'unmatched' | 'needsObserver'
 
-const FILTERS: { key: FilterKey; label: string; match: (f: FacultyMember) => boolean }[] = [
-  { key: 'due', label: 'Due this cycle', match: (f) => f.dueThisCycle },
-  { key: 'overdue', label: 'Overdue', match: (f) => f.statusTone === 'overdue' },
-  { key: 'unmatched', label: 'Unmatched', match: (f) => f.unmatched },
-  { key: 'needsObserver', label: 'Needs observer', match: (f) => f.needsObserver },
+const FILTERS: { key: FilterKey; label: string; title: string; match: (f: FacultyMember) => boolean }[] = [
+  { key: 'due', label: 'Due this cycle', title: 'Due or overdue for evaluation this cycle', match: (f) => f.dueThisCycle },
+  { key: 'overdue', label: 'Overdue', title: 'Past their due semester', match: (f) => f.statusTone === 'overdue' },
+  {
+    key: 'unmatched',
+    label: 'Unmatched',
+    title: 'Signed up, but observer selection found no eligible observers',
+    match: (f) => f.unmatched,
+  },
+  {
+    key: 'needsObserver',
+    label: 'Needs observer',
+    title: 'Signed up, but no observer chosen yet',
+    match: (f) => f.needsObserver,
+  },
 ]
 
 type SortKey = 'next' | 'name' | 'level' | 'courses' | 'observations'
@@ -192,6 +202,7 @@ function FacultyPage({ user }: PageProps) {
               key={f.key}
               type="button"
               aria-pressed={active}
+              title={f.title}
               onClick={() => setFilter(active ? null : f.key)}
               className={`rounded-full border px-3 py-1.5 text-[11px] transition-colors ${
                 active

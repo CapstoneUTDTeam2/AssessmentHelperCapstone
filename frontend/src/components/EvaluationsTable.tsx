@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import type { EvaluationRow, EvaluationStatus } from '../data/dashboardMock'
+import type { EvaluationRow, EvaluationStatus, SignupState } from '../data/dashboardMock'
 import { compareEvaluationRows } from '../utils/evaluationSort'
 import type { EvaluationSortKey } from '../utils/evaluationSort'
 
@@ -8,39 +8,80 @@ const STATUS_STYLES: Record<EvaluationStatus, string> = {
   'Report overdue': 'bg-[#b3261e]',
   'Not held': 'bg-[#b3261e]',
   Unmatched: 'bg-neutral-500',
-  Pending: 'bg-[#e0791a]',
+  'Not signed up': 'bg-[#c4561a]',
+  'Needs observer': 'bg-[#e0791a]',
   Confirmed: 'bg-[#3f8a55]',
   Completed: 'bg-[#1c4532]',
 }
 
-type FilterKey = 'all' | 'overdue' | 'unmatched' | 'awaiting' | 'week'
+type FilterKey = 'all' | 'overdue' | 'none' | 'waiting' | 'unmatched' | 'awaiting' | 'week'
 
-const FILTERS: { key: FilterKey; label: string; match: (row: EvaluationRow) => boolean; showCount: boolean }[] = [
-  { key: 'all', label: 'All', match: () => true, showCount: true },
-  { key: 'overdue', label: 'Overdue', match: (r) => r.status === 'Overdue' || r.status === 'Report overdue', showCount: true },
-  { key: 'unmatched', label: 'Unmatched', match: (r) => r.status === 'Unmatched', showCount: true },
-  { key: 'awaiting', label: 'Awaiting report', match: (r) => r.status === 'Report overdue', showCount: true },
-  { key: 'week', label: 'This week', match: () => false, showCount: false },
+const FILTERS: { key: FilterKey; label: string; title: string; match: (row: EvaluationRow) => boolean; showCount: boolean }[] = [
+  { key: 'all', label: 'All', title: 'Everyone due or overdue this cycle', match: () => true, showCount: true },
+  {
+    key: 'overdue',
+    label: 'Overdue',
+    title: 'Past their due semester, or past the observation date with no report',
+    match: (r) => r.status === 'Overdue' || r.status === 'Report overdue',
+    showCount: true,
+  },
+  { key: 'none', label: 'Not signed up', title: 'Due, but not signed up to be observed', match: (r) => r.signup === 'none', showCount: true },
+  {
+    key: 'waiting',
+    label: 'Needs observer',
+    title: 'Signed up, but no observer chosen yet',
+    match: (r) => r.signup === 'waiting',
+    showCount: true,
+  },
+  {
+    key: 'unmatched',
+    label: 'Unmatched',
+    title: 'Observer selection found no eligible observers',
+    match: (r) => r.signup === 'unmatched',
+    showCount: true,
+  },
+  {
+    key: 'awaiting',
+    label: 'Awaiting report',
+    title: 'The observation date passed but the report is not signed',
+    match: (r) => r.status === 'Report overdue',
+    showCount: true,
+  },
+  { key: 'week', label: 'This week', title: 'Observations in the next 7 days', match: () => false, showCount: true },
 ]
+
+// What the Observer column says before an observation is scheduled.
+const NO_OBSERVER: Record<Exclude<SignupState, 'observer'>, string> = {
+  none: 'Not signed up',
+  waiting: 'Needs observer',
+  unmatched: 'No eligible observers',
+}
 
 type SortKey = EvaluationSortKey
 
 const COLUMNS: { key: SortKey; label: string }[] = [
   { key: 'faculty', label: 'Faculty' },
   { key: 'level', label: 'Level' },
-  { key: 'observer', label: 'Observer' },
-  { key: 'session', label: 'Session' },
   { key: 'due', label: 'Due' },
+  { key: 'lastEvaluation', label: 'Last evaluation' },
+  { key: 'observer', label: 'Observer' },
+  { key: 'observation', label: 'Observation' },
   { key: 'status', label: 'Status' },
 ]
 
-function isWithinDays(date: string, today: string, days: number) {
+function isWithinDays(date: string | null, today: string, days: number) {
+  if (!date) return false
   const diff = (Date.parse(date) - Date.parse(today)) / 86_400_000
   return diff >= 0 && diff <= days
 }
 
-function formatDue(date: string) {
-  return new Date(`${date}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+function formatDate(date: string, withYear = false) {
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString('en-US', {
+    timeZone: 'UTC',
+    month: 'short',
+    day: 'numeric',
+    ...(withYear ? { year: 'numeric' } : {}),
+  })
 }
 
 interface EvaluationsCardProps {
@@ -54,7 +95,7 @@ function EvaluationsCard({ rows: evaluations = [], today = new Date().toISOStrin
   const rows = useMemo(() => {
     const match =
       filter === 'week'
-        ? (r: EvaluationRow) => isWithinDays(r.due, today, 7)
+        ? (r: EvaluationRow) => isWithinDays(r.observationDate, today, 7)
         : FILTERS.find((f) => f.key === filter)!.match
     const sorted = evaluations.filter(match).sort((a, b) => {
       const cmp = compareEvaluationRows(a, b, sort.key)
@@ -85,7 +126,7 @@ function EvaluationsCard({ rows: evaluations = [], today = new Date().toISOStrin
 
       <div className="mt-3 flex flex-wrap gap-1.5" role="group" aria-label="Filter evaluations">
         {FILTERS.map((f) => {
-          const match = f.key === 'week' ? (r: EvaluationRow) => isWithinDays(r.due, today, 7) : f.match
+          const match = f.key === 'week' ? (r: EvaluationRow) => isWithinDays(r.observationDate, today, 7) : f.match
           const active = filter === f.key
           const count = evaluations.filter(match).length
           return (
@@ -93,6 +134,7 @@ function EvaluationsCard({ rows: evaluations = [], today = new Date().toISOStrin
               key={f.key}
               type="button"
               aria-pressed={active}
+              title={f.title}
               onClick={() => setFilter(f.key)}
               className={`rounded-full border px-3 py-1 text-[10px] transition-colors ${
                 active
@@ -108,7 +150,7 @@ function EvaluationsCard({ rows: evaluations = [], today = new Date().toISOStrin
       </div>
 
       <div className="mt-3 overflow-x-auto">
-        <table className="w-full min-w-[520px] text-[11px]">
+        <table className="w-full min-w-[640px] text-[11px]">
           <thead>
             <tr className="bg-neutral-100 text-[10px] text-neutral-600">
               {COLUMNS.map((col, i) => {
@@ -140,7 +182,7 @@ function EvaluationsCard({ rows: evaluations = [], today = new Date().toISOStrin
           </thead>
           <tbody>
             <GroupRows title="Outstanding" rows={rows.outstanding} />
-            <GroupRows title="Upcoming · Next 30 days" rows={rows.upcoming} />
+            <GroupRows title="Upcoming" rows={rows.upcoming} />
             {rows.outstanding.length + rows.upcoming.length === 0 && (
               <tr>
                 <td colSpan={COLUMNS.length} className="py-8 text-center text-neutral-500">
@@ -172,14 +214,30 @@ function GroupRows({ title, rows }: { title: string; rows: EvaluationRow[] }) {
         <tr key={row.id} className="border-b border-neutral-100">
           <td className="px-1.5 py-2.5 font-medium text-neutral-900">{row.faculty}</td>
           <td className="px-1.5 py-2.5 text-neutral-700">{row.level}</td>
+          <td className="px-1.5 py-2.5 text-neutral-700">{row.dueTerm}</td>
           <td className="px-1.5 py-2.5 text-neutral-700">
-            {row.observer ?? <span style={{ color: '#b3261e' }}>— unmatched</span>}
+            {row.lastEvaluation ? formatDate(row.lastEvaluation, true) : <span className="text-neutral-400">Never</span>}
           </td>
-          <td className="px-1.5 py-2.5 text-neutral-700">{row.session}</td>
-          <td className="px-1.5 py-2.5 text-neutral-700">{formatDue(row.due)}</td>
+          <td className="px-1.5 py-2.5 text-neutral-700">
+            {row.signup === 'observer' ? (
+              row.observer
+            ) : (
+              <span className={row.signup === 'unmatched' ? 'text-[#b3261e]' : 'text-neutral-500'}>{NO_OBSERVER[row.signup]}</span>
+            )}
+          </td>
+          <td className="px-1.5 py-2.5 text-neutral-700">
+            {row.observation ? (
+              <>
+                {row.observation}
+                {row.observationDate && <span className="text-neutral-500"> · {formatDate(row.observationDate)}</span>}
+              </>
+            ) : (
+              <span className="text-neutral-400">—</span>
+            )}
+          </td>
           <td className="px-1.5 py-2.5">
             <span
-              className={`inline-block w-20 rounded-full py-0.5 text-center text-[9px] font-medium whitespace-nowrap text-white ${
+              className={`inline-block w-24 rounded-full py-0.5 text-center text-[9px] font-medium whitespace-nowrap text-white ${
                 STATUS_STYLES[row.status]
               }`}
             >
