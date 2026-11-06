@@ -31,12 +31,14 @@ export interface ReportRow {
   status: ReportStatus
 }
 
-function reportStatus(o: ObservationSummary, today: string): ReportStatus {
+export function reportStatus(o: ObservationSummary, today: string): ReportStatus {
   if (o.status === 'Completed') return 'Signed off'
   if (o.not_held) return 'Not held'
   if (!o.observation_date || o.observation_date > today) return 'Scheduled'
-  // The observation date passed: one signature means the form is filled in and waiting on the other person.
-  return o.observer_signed || o.observee_signed ? 'Awaiting sign-off' : 'Report overdue'
+  // From the observation day on, one signature means the form is filled in and waiting on the other person.
+  if (o.observer_signed || o.observee_signed) return 'Awaiting sign-off'
+  // The report is only overdue once the observation day has passed.
+  return o.observation_date < today ? 'Report overdue' : 'Scheduled'
 }
 
 export async function getReports(signal?: AbortSignal): Promise<{ cycle: EvaluationCycle | null; rows: ReportRow[] }> {

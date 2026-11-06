@@ -365,22 +365,22 @@ function Report({
           <h2 className="text-sm font-semibold text-neutral-900">Class details</h2>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <Field label="Faculty observed">
-              <input readOnly value={you(report.observee_name, report.observee_id)} className={input} />
+              <input disabled value={you(report.observee_name, report.observee_id)} className={input} />
             </Field>
             <Field label="Course and section">
-              <input readOnly value={`${report.course_code}.${report.section_name} ${report.course_name}`} className={input} />
+              <input disabled value={`${report.course_code}.${report.section_name} ${report.course_name}`} className={input} />
             </Field>
             <Field label="Semester">
-              <input readOnly value={`${report.semester} ${report.year}`} className={input} />
+              <input disabled value={`${report.semester} ${report.year}`} className={input} />
             </Field>
             <Field label="Date of observation">
-              <input readOnly value={report.observation_date ? longDate(report.observation_date) : '—'} className={input} />
+              <input disabled value={report.observation_date ? longDate(report.observation_date) : '—'} className={input} />
             </Field>
             <Field label="Observer">
-              <input readOnly value={you(report.observer_name, report.observer_id)} className={input} />
+              <input disabled value={you(report.observer_name, report.observer_id)} className={input} />
             </Field>
             <Field label="Template">
-              <input readOnly value={report.template_version} className={input} />
+              <input disabled value={report.template_version} className={input} />
             </Field>
           </div>
         </section>
@@ -444,7 +444,7 @@ function Report({
           <Field label="Summary">
             <textarea
               rows={4}
-              readOnly={!editable}
+              disabled={!editable}
               value={draft.summary}
               onChange={(e) => setDraft((d) => ({ ...d, summary: e.target.value }))}
               placeholder={editable ? 'Overall strengths and areas for growth…' : 'No summary'}
@@ -686,7 +686,7 @@ function CriterionRow({
           >
             <textarea
               rows={2}
-              readOnly={locked}
+              disabled={locked}
               value={comment}
               onChange={(e) => onComment(e.target.value)}
               placeholder="Effective practice and opportunities for growth…"
@@ -704,7 +704,7 @@ function CriterionRow({
           <Field label="Observee comment" className="mt-2">
             <textarea
               rows={2}
-              readOnly={!canComment}
+              disabled={!canComment}
               value={observeeComment}
               onChange={(e) => onObserveeComment(e.target.value)}
               placeholder="Your response to this rating…"
