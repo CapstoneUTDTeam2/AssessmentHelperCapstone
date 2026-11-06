@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { EvaluationRow, EvaluationStatus } from '../data/dashboardMock'
+import { compareEvaluationRows } from '../utils/evaluationSort'
+import type { EvaluationSortKey } from '../utils/evaluationSort'
 
 const STATUS_STYLES: Record<EvaluationStatus, string> = {
   Overdue: 'bg-[#b3261e]',
@@ -21,7 +23,7 @@ const FILTERS: { key: FilterKey; label: string; match: (row: EvaluationRow) => b
   { key: 'week', label: 'This week', match: () => false, showCount: false },
 ]
 
-type SortKey = 'faculty' | 'level' | 'observer' | 'session' | 'due' | 'status'
+type SortKey = EvaluationSortKey
 
 const COLUMNS: { key: SortKey; label: string }[] = [
   { key: 'faculty', label: 'Faculty' },
@@ -55,7 +57,7 @@ function EvaluationsCard({ rows: evaluations = [], today = new Date().toISOStrin
         ? (r: EvaluationRow) => isWithinDays(r.due, today, 7)
         : FILTERS.find((f) => f.key === filter)!.match
     const sorted = evaluations.filter(match).sort((a, b) => {
-      const cmp = (a[sort.key] ?? '').localeCompare(b[sort.key] ?? '')
+      const cmp = compareEvaluationRows(a, b, sort.key)
       return sort.dir === 'asc' ? cmp : -cmp
     })
     return {
