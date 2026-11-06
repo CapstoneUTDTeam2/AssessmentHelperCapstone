@@ -157,7 +157,7 @@ SELECT ec.cycleid, ec.termid, ec.templateid, at.semester, at.yearnum, ec.signupd
 FROM EvaluationCycle ec
 JOIN AcademicTerm at ON ec.TermID = at.TermID
 WHERE at.Semester IN ('Spring', 'Fall')
-  AND NOT (at.Semester = :semester AND at.YearNum = :year)
+  AND (at.YearNum < :year OR (at.YearNum = :year AND at.Semester = 'Spring' AND :semester = 'Fall'))
 ORDER BY at.YearNum DESC,
     CASE at.Semester WHEN 'Spring' THEN 1 WHEN 'Fall' THEN 2 END DESC
 LIMIT 1

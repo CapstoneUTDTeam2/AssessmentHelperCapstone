@@ -35,9 +35,7 @@ WITH CurrentCycle AS (
         END AS SemesterOrder
     FROM EvaluationCycle ec
     JOIN AcademicTerm at ON ec.TermID = at.TermID
-    WHERE at.Semester IN ('Spring', 'Fall')
-    ORDER BY at.YearNum DESC, SemesterOrder DESC
-    LIMIT 1
+    WHERE ec.CycleID = current_cycle_id()
 ),
 
 LastEvaluation AS (

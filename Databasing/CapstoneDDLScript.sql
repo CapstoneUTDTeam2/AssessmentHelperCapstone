@@ -116,6 +116,47 @@ ALTER TABLE EvaluationCycle
 ALTER TABLE EvaluationCycle
     ADD COLUMN SurveyNotificationSentAt TIMESTAMP;
 
+-- Test harness clock. When a row exists, the app treats frozen_at as now.
+CREATE TABLE IF NOT EXISTS testharnessclock (
+    singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+    frozen_at TIMESTAMP WITHOUT TIME ZONE NOT NULL
+);
+
+-- Today on campus (America/Chicago), or the frozen test harness date.
+CREATE OR REPLACE FUNCTION campus_today()
+RETURNS DATE
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT COALESCE(
+        (SELECT frozen_at::DATE FROM testharnessclock WHERE singleton),
+        (NOW() AT TIME ZONE 'America/Chicago')::DATE
+    );
+$$;
+
+-- The cycle in progress: the latest Spring/Fall cycle whose semester has started
+-- (Spring on Jan 1, Fall on Aug 1). A cycle stays current after its deadlines,
+-- so its final KPIs show, until the next semester starts. Before any has
+-- started, the earliest.
+CREATE OR REPLACE FUNCTION current_cycle_id()
+RETURNS INT
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT ec.CycleID
+    FROM EvaluationCycle ec
+    JOIN AcademicTerm at ON at.TermID = ec.TermID
+    CROSS JOIN LATERAL (
+        SELECT MAKE_DATE(at.YearNum, CASE at.Semester WHEN 'Spring' THEN 1 ELSE 8 END, 1) AS starts
+    ) term
+    WHERE at.Semester IN ('Spring', 'Fall')
+    ORDER BY
+        (term.starts <= campus_today()) DESC,
+        CASE WHEN term.starts <= campus_today() THEN term.starts END DESC,
+        term.starts ASC
+    LIMIT 1;
+$$;
+
 
 -- EvaluationCriterionSectioner
 CREATE TABLE EvaluationCriterionSection (

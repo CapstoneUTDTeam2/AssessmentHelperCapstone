@@ -11,15 +11,12 @@ FROM Professors
 WHERE professorid = :professor_id
 """
 
-# Current semester is the latest Spring/Fall EvaluationCycle term.
+# Current semester is the term of the cycle in progress (current_cycle_id).
 CURRENT_TERM_SQL = """
 SELECT at.termid, at.semester, at.yearnum
 FROM EvaluationCycle ec
 JOIN AcademicTerm at ON ec.TermID = at.TermID
-WHERE at.Semester IN ('Spring', 'Fall')
-ORDER BY at.YearNum DESC,
-    CASE at.Semester WHEN 'Spring' THEN 1 WHEN 'Fall' THEN 2 END DESC
-LIMIT 1
+WHERE ec.CycleID = current_cycle_id()
 """
 
 CLASSES_SQL = """

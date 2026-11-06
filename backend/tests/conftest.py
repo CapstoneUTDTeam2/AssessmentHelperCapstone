@@ -39,6 +39,9 @@ def client():
         ).fetchone()[0]
         for sql_file in SQL_FILES:
             conn.execute(sql_file.read_text())
+        # The seed adds cycles through Fall 2028. Keep tests on cycle 2 whatever the real date;
+        # test_current_cycle.py adds them back to test moving between semesters.
+        conn.execute("DELETE FROM EvaluationCycle WHERE CycleID > 2")
         # Sample signup deadline (2026-09-15) has passed, so move cycle 2 forward.
         conn.execute(
             """

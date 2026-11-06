@@ -27,7 +27,12 @@ Values
 (2, 'Spring', 2025),
 (3, 'Fall', 2025),
 (4, 'Spring', 2026),
-(5, 'Fall', 2026);
+(5, 'Fall', 2026),
+-- Two years ahead, so the test clock can move past the current cycle.
+(6, 'Spring', 2027),
+(7, 'Fall', 2027),
+(8, 'Spring', 2028),
+(9, 'Fall', 2028);
 
 INSERT INTO Courses(CourseID, CourseName, CourseCode, CourseDescription)
 Values
@@ -84,7 +89,11 @@ Values
 INSERT INTO EvaluationCycle(CycleID, TermID, SignUpDeadLine, ObservationDeadLine, PostObservationFeedbackDeadLine, AppFeedbackDeadLine, TemplateID)
 Values
 (1, 4, '2026-01-30', '2026-04-15', '2026-05-01', '2026-05-15', 1),
-(2, 5, '2026-09-15', '2026-11-15', '2026-12-15', '2026-12-15', 3);
+(2, 5, '2026-09-15', '2026-11-15', '2026-12-15', '2026-12-15', 3),
+(3, 6, '2027-01-30', '2027-04-15', '2027-05-01', '2027-05-15', 3),
+(4, 7, '2027-09-15', '2027-11-15', '2027-12-15', '2027-12-15', 3),
+(5, 8, '2028-01-30', '2028-04-15', '2028-05-01', '2028-05-15', 3),
+(6, 9, '2028-09-15', '2028-11-15', '2028-12-15', '2028-12-15', 3);
 
 INSERT INTO ObservationSignup(SignupID, CycleID, ObserveeProfessorID, SectionID, SignupDate, 
     SignupTime, Status)
