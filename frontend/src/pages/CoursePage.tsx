@@ -64,8 +64,12 @@ function asDays(value: string | null): Days {
   return meetingDayLetters(value)
 }
 
+/** Unique per course: the same code can come from both the sample data and CourseBook. */
+const courseKey = (course: Course) => String(course.id ?? course.code)
+
 function fromCatalog(course: CatalogCourse): Course {
   return {
+    id: course.course_id,
     code: course.course_code,
     title: course.course_name,
     creditHours: 0,
@@ -92,7 +96,7 @@ function CoursePage() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<CourseFilter>('all')
   const [sort, setSort] = useState<CourseSort>('code')
-  const [selectedCode, setSelectedCode] = useState('')
+  const [selectedKey, setSelectedKey] = useState('')
   const [catalog, setCatalog] = useState<{ term: string; courses: Course[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [pulling, setPulling] = useState(false)
@@ -102,7 +106,7 @@ function CoursePage() {
     getCourses(signal).then((body) => {
       const courses = body.courses.map(fromCatalog)
       setCatalog({ term: `${body.semester} ${body.year}`, courses })
-      setSelectedCode((current) => current || courses[0]?.code || '')
+      setSelectedKey((current) => current || (courses[0] ? courseKey(courses[0]) : ''))
       setError(null)
     })
 
@@ -118,7 +122,6 @@ function CoursePage() {
   const COURSES = catalog?.courses ?? []
   const TERM = catalog?.term ?? '—'
   const totalSections = COURSES.reduce((sum, c) => sum + c.sections.length, 0)
-  const selected = COURSES.find((c) => c.code === selectedCode) ?? COURSES[0]
 
   const courses = useMemo(() => {
     const match = COURSE_FILTERS.find((f) => f.key === filter)!.match
@@ -126,6 +129,9 @@ function CoursePage() {
       (c) => match(c) && matchesSearch(search, [c.code, c.title, ...instructorsOf(c)]),
     ).sort(COURSE_SORTS[sort].compare)
   }, [search, filter, sort, COURSES])
+  // Show the chosen course while it's in the list; otherwise the first course that is.
+  const selected =
+    courses.find((c) => courseKey(c) === selectedKey) ?? courses[0] ?? COURSES.find((c) => courseKey(c) === selectedKey) ?? COURSES[0]
 
   if (error) {
     return (
@@ -239,12 +245,12 @@ function CoursePage() {
 
           <ul className="flex-1 overflow-y-auto border-t border-neutral-100">
             {courses.map((course) => {
-              const isSelected = course.code === selected.code
+              const isSelected = courseKey(course) === courseKey(selected)
               return (
-                <li key={course.code} className="border-b border-neutral-100">
+                <li key={courseKey(course)} className="border-b border-neutral-100">
                   <button
                     type="button"
-                    onClick={() => setSelectedCode(course.code)}
+                    onClick={() => setSelectedKey(courseKey(course))}
                     aria-current={isSelected ? 'true' : undefined}
                     className={`flex w-full items-center gap-2 border-l-2 px-3 py-2.5 text-left transition-colors ${
                       isSelected ? 'border-[#e0791a] bg-neutral-50' : 'border-transparent hover:bg-neutral-50'

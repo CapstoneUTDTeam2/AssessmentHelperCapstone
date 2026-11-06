@@ -34,6 +34,8 @@ export interface HistoryEntry {
 }
 
 export interface Course {
+  /** Courses.CourseID for catalog courses; codes can repeat (sample data and CourseBook). */
+  id?: number
   code: string
   title: string
   creditHours: number
