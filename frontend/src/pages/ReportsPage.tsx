@@ -5,6 +5,7 @@ import type { EvaluationCycle } from '../api/cycles'
 import type { FacultyLevel } from '../data/facultyMock'
 import type { PageProps } from '../pageProps'
 import { downloadCsv } from '../utils/csv'
+import { matchesSearch } from '../utils/search'
 
 const PAGE_SIZE = 12
 
@@ -133,13 +134,12 @@ function ReportsPage({ navigate }: PageProps) {
   }, [])
 
   const rows = useMemo(() => {
-    const q = search.trim().toLowerCase()
     const match = FILTERS.find((f) => f.key === filter)!.match
     return reports
       .filter(
         (r) =>
           match(r) &&
-          (!q || [r.professor, r.reportDetail, r.reportType ?? ''].some((text) => text.toLowerCase().includes(q))),
+          matchesSearch(search, [r.professor, r.reportDetail, r.reportType]),
       )
       .sort((a, b) => compare(a, b, sort))
   }, [reports, search, filter, sort])

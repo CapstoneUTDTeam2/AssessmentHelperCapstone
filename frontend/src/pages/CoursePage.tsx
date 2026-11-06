@@ -4,6 +4,8 @@ import { ingestCourseBook } from '../api/coursebook'
 import { getCourses } from '../api/courses'
 import type { CatalogCourse } from '../api/courses'
 import type { Course, Days, Section } from '../data/courseMock'
+import { isGraduateCode } from '../utils/courses'
+import { matchesSearch } from '../utils/search'
 import { formatMeetingDays, layoutOverlaps, meetingDayLetters, weekdaysFromMeetingDays } from '../utils/calendar'
 
 /** Schedule block colors, assigned to a course's instructors in order. */
@@ -41,7 +43,7 @@ const SECTION_SORTS: Record<SectionSort, { label: string; compare: (a: Section, 
 }
 
 function isGraduate(course: Course) {
-  return Number(course.code.split(' ')[1]) >= 5000
+  return isGraduateCode(course.code)
 }
 
 function instructorsOf(course: Course) {
@@ -119,10 +121,9 @@ function CoursePage() {
   const selected = COURSES.find((c) => c.code === selectedCode) ?? COURSES[0]
 
   const courses = useMemo(() => {
-    const q = search.trim().toLowerCase()
     const match = COURSE_FILTERS.find((f) => f.key === filter)!.match
     return COURSES.filter(
-      (c) => match(c) && (!q || c.code.toLowerCase().includes(q) || c.title.toLowerCase().includes(q)),
+      (c) => match(c) && matchesSearch(search, [c.code, c.title, ...instructorsOf(c)]),
     ).sort(COURSE_SORTS[sort].compare)
   }, [search, filter, sort, COURSES])
 
@@ -150,7 +151,7 @@ function CoursePage() {
         <div>
           <h1 className="text-xl font-semibold text-neutral-900">Course Overview</h1>
           <p className="mt-1 text-xs text-neutral-500">
-            {TERM} · {COURSES.length} courses · {totalSections} sections · from UTD CourseBook into Courses, Sections, and
+            {TERM} · {courses.length === COURSES.length ? COURSES.length : `${courses.length} of ${COURSES.length}`} courses · {totalSections} sections · from UTD CourseBook into Courses, Sections, and
             TeachingAssignment
           </p>
           {pullMessage && <p className="mt-1 text-[11px] text-neutral-600">{pullMessage}</p>}

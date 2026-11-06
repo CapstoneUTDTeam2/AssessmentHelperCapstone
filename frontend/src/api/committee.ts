@@ -1,4 +1,4 @@
-import type { EvaluationRow, HireLevel, Kpi } from '../data/dashboardMock'
+import type { EvaluationRow, HireLevel, Kpi, SignupState } from '../data/dashboardMock'
 import { getCurrentCycle } from './cycles'
 import type { EvaluationCycle } from './cycles'
 import { getDueProfessors, getOverdueProfessors } from './evaluationStatus'
@@ -40,30 +40,39 @@ export interface CommitteeOverview {
 function toRow(
   professor: ProfessorEvaluationStatus,
   group: EvaluationRow['group'],
-  status: EvaluationRow['status'],
+  signup: Exclude<SignupState, 'observer'>,
   observation: ObservationSummary | undefined,
   today: string,
 ): EvaluationRow {
-  const next = professor.next_due_year
-    ? `${professor.next_due_semester ?? ''} ${professor.next_due_year}`.trim()
-    : '—'
+  const year = professor.next_due_year
+  const semester = professor.next_due_semester
   const row: EvaluationRow = {
     id: professor.professor_id,
     faculty: professor.name,
     level: hireLevel(professor.current_level),
+    dueTerm: year ? `${semester ?? ''} ${year}`.trim() : '—',
+    dueKey: year ? `${year}-${semester === 'Fall' ? 2 : 1}` : '9999',
+    lastEvaluation: professor.last_evaluation_date,
+    signup,
     observer: null,
-    session: next,
-    due: professor.next_due_year
-      ? `${professor.next_due_year}-${professor.next_due_semester === 'Fall' ? '08' : '01'}-01`
-      : '9999-01-01',
-    status,
+    observation: null,
+    observationDate: null,
+    status:
+      signup === 'unmatched'
+        ? 'Unmatched'
+        : group === 'outstanding'
+          ? 'Overdue'
+          : signup === 'waiting'
+            ? 'Needs observer'
+            : 'Not signed up',
     group,
   }
   if (!observation) return row
   const date = observation.observation_date
+  row.signup = 'observer'
   row.observer = observation.observer_name
-  row.session = `${observation.course_code}.${observation.section_name}${date ? ` · ${date}` : ''}`
-  if (date) row.due = date
+  row.observation = `${observation.course_code}.${observation.section_name}`
+  row.observationDate = date
   if (observation.status === 'Completed') row.status = 'Completed'
   else if (observation.not_held) row.status = 'Not held'
   else if (date && date < today) row.status = 'Report overdue'
@@ -86,13 +95,16 @@ export async function getCommitteeOverview(signal?: AbortSignal): Promise<Commit
   const today = cycle?.today ?? new Date().toISOString().slice(0, 10)
   const observationByObservee = new Map((observations?.observations ?? []).map((o) => [o.observee_id, o]))
   const unmatchedIds = new Set((alerts?.alerts ?? []).filter((a) => a.level === 'none').map((a) => a.professor_id))
-  const row = (p: ProfessorEvaluationStatus, group: EvaluationRow['group'], status: EvaluationRow['status']) =>
-    toRow(p, group, unmatchedIds.has(p.professor_id) ? 'Unmatched' : status, observationByObservee.get(p.professor_id), today)
+  const signupStatus = new Map((signups?.signups ?? []).map((s) => [s.professor_id, s.status]))
+  const signupState = (id: number): Exclude<SignupState, 'observer'> =>
+    unmatchedIds.has(id) || signupStatus.get(id) === 'Unmatched' ? 'unmatched' : signupStatus.has(id) ? 'waiting' : 'none'
+  const row = (p: ProfessorEvaluationStatus, group: EvaluationRow['group']) =>
+    toRow(p, group, signupState(p.professor_id), observationByObservee.get(p.professor_id), today)
   const rows: EvaluationRow[] = [
-    ...overdue.professors.map((p) => row(p, 'outstanding', 'Overdue')),
+    ...overdue.professors.map((p) => row(p, 'outstanding')),
     ...due.professors
       .filter((p) => !overdue.professors.some((o) => o.professor_id === p.professor_id))
-      .map((p) => row(p, 'upcoming', 'Pending')),
+      .map((p) => row(p, 'upcoming')),
   ]
 
   return {

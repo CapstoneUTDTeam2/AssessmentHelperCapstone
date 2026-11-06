@@ -15,6 +15,7 @@ import {
   updateCriterion,
 } from '../api/templates'
 import type { AppliesTo, FullTemplate, TemplateCriterion, TemplateInfo } from '../api/templates'
+import { matchesSearch } from '../utils/search'
 
 type Modality = AppliesTo
 
@@ -72,18 +73,6 @@ function sectionsOf(template: FullTemplate): CriteriaSection[] {
   return list
 }
 
-const MODALITY_LABELS: Record<Modality, string> = {
-  All: 'All modalities',
-  'In person': 'In person',
-  'Online / Hybrid': 'Online / Hybrid',
-}
-
-const MODALITY_BADGES: Record<Modality, string> = {
-  All: 'bg-[#e3efe6] text-[#1c4532]',
-  'In person': 'bg-[#fbe8d6] text-[#c4561a]',
-  'Online / Hybrid': 'bg-[#e4e8f6] text-[#34437a]',
-}
-
 const SCALE_CHIPS = {
   green: 'bg-[#e3efe6] text-[#1c4532]',
   orange: 'bg-[#fbe8d6] text-[#c4561a]',
@@ -95,15 +84,11 @@ function scaleTone(value: number): keyof typeof SCALE_CHIPS {
   return value <= 2 ? 'orange' : 'green'
 }
 
-const MODALITIES: Modality[] = ['All', 'In person', 'Online / Hybrid']
-
-type FilterKey = 'all' | Modality | 'hidden'
+// Observations are in person, so criteria are not split by class modality.
+type FilterKey = 'all' | 'hidden'
 
 const FILTERS: { key: FilterKey; label: string; match: (c: Criterion) => boolean }[] = [
   { key: 'all', label: 'All', match: () => true },
-  { key: 'All', label: 'All modalities', match: (c) => c.appliesTo === 'All' },
-  { key: 'Online / Hybrid', label: 'Online / Hybrid', match: (c) => c.appliesTo === 'Online / Hybrid' },
-  { key: 'In person', label: 'In person', match: (c) => c.appliesTo === 'In person' },
   { key: 'hidden', label: 'Hidden', match: (c) => !c.active },
 ]
 
@@ -182,9 +167,8 @@ function EvaluationCriteriaPage() {
   const dirty = draft !== null && saved !== null && JSON.stringify({ ...draft, active: saved.active }) !== JSON.stringify(saved)
 
   const visible = useMemo(() => {
-    const q = search.trim().toLowerCase()
     const match = FILTERS.find((f) => f.key === filter)!.match
-    return criteria.filter((c) => match(c) && (!q || [c.text, ...c.points].some((t) => t.toLowerCase().includes(q))))
+    return criteria.filter((c) => match(c) && matchesSearch(search, [c.text, ...c.points]))
   }, [criteria, search, filter])
 
   const isFiltering = filter !== 'all' || search.trim() !== ''
@@ -412,7 +396,6 @@ function EvaluationCriteriaPage() {
                 <tr className="bg-neutral-100 text-[10px] text-neutral-600">
                   <th className="w-12 rounded-l py-2 pl-6 text-left font-normal">#</th>
                   <th className="px-2 py-2 text-left font-normal">Criterion</th>
-                  <th className="w-28 px-2 py-2 text-left font-normal">Applies to</th>
                   <th className="w-20 px-2 py-2 text-left font-normal">Used in</th>
                   <th className="w-14 rounded-r px-2 py-2 text-left font-normal">Active</th>
                 </tr>
@@ -423,7 +406,7 @@ function EvaluationCriteriaPage() {
                 return (
                   <tbody key={section.id}>
                     <tr>
-                      <th colSpan={4} scope="rowgroup" className="px-2 pt-4 pb-1.5 text-left text-[9px] font-semibold tracking-wide text-neutral-500 uppercase">
+                      <th colSpan={3} scope="rowgroup" className="px-2 pt-4 pb-1.5 text-left text-[9px] font-semibold tracking-wide text-neutral-500 uppercase">
                         {section.name} · {rows.length}
                       </th>
                       <td className="px-2 pt-4 pb-1.5 text-right">
@@ -488,11 +471,6 @@ function EvaluationCriteriaPage() {
                                 ))}
                               </ul>
                             )}
-                          </td>
-                          <td className="px-2 py-2">
-                            <span className={`rounded px-1.5 py-0.5 text-[9px] whitespace-nowrap ${MODALITY_BADGES[c.appliesTo]}`}>
-                              {MODALITY_LABELS[c.appliesTo]}
-                            </span>
                           </td>
                           <td className="px-2 py-2 whitespace-nowrap text-neutral-500">{c.usedIn} ratings</td>
                           <td className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
@@ -682,24 +660,6 @@ function CriterionEditor({ draft, number, sections, scale, dirty, locked, busy, 
           />
         </label>
 
-        <fieldset className="mt-3">
-          <legend className="text-[10px] font-medium text-neutral-700">Applies to</legend>
-          <div className="mt-1.5 grid grid-cols-3 overflow-hidden rounded-md border border-neutral-200">
-            {MODALITIES.map((m) => (
-              <button
-                key={m}
-                type="button"
-                aria-pressed={draft.appliesTo === m}
-                onClick={() => set('appliesTo', m)}
-                className={`border-l border-neutral-200 py-1.5 text-[10px] first:border-l-0 ${
-                  draft.appliesTo === m ? 'bg-[#1c4532] text-white' : 'text-neutral-800 hover:bg-neutral-50'
-                }`}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-        </fieldset>
 
         <div className="mt-3">
           <p className="text-[10px] font-medium text-neutral-700">Rating scale</p>

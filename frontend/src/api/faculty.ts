@@ -5,7 +5,7 @@
 import type { FacultyLevel, FacultyMember, StatusTone } from '../data/facultyMock'
 import { getCourses } from './courses'
 import { getEvaluationStatuses } from './evaluationStatus'
-import { getObserverAlerts } from './observerSelection'
+import { getObserverAlerts, getSelectionSignups } from './observerSelection'
 import type { CurrentTerm, EvaluationStatus, ProfessorEvaluationStatus } from './evaluationStatus'
 
 const LEVELS: Record<string, FacultyLevel> = {
@@ -84,13 +84,17 @@ export async function getFaculty(
   signal?: AbortSignal,
   options?: { dueSemester?: boolean },
 ): Promise<{ term: CurrentTerm; members: FacultyMember[] }> {
-  const [{ current_term, professors }, catalog, alerts] = await Promise.all([
+  const [{ current_term, professors }, catalog, alerts, signups] = await Promise.all([
     getEvaluationStatuses(undefined, signal),
     getCourses(signal).catch(() => null),
     getObserverAlerts(signal).catch(() => null),
+    getSelectionSignups(signal).catch(() => null),
   ])
   const unmatchedIds = new Set((alerts?.alerts ?? []).filter((a) => a.level === 'none').map((a) => a.professor_id))
-  const lowIds = new Set((alerts?.alerts ?? []).filter((a) => a.level === 'low').map((a) => a.professor_id))
+  // Signed up, but no observer chosen yet. Accepted means an observation is scheduled.
+  const waitingIds = new Set(
+    (signups?.signups ?? []).filter((s) => s.status !== 'Accepted').map((s) => s.professor_id),
+  )
   const coursesByProfessor = new Map<number, string[]>()
   for (const course of catalog?.courses ?? []) {
     for (const section of course.sections) {
@@ -107,7 +111,7 @@ export async function getFaculty(
       const member = toFacultyMember(professor, options?.dueSemester)
       member.courses = coursesByProfessor.get(professor.professor_id) ?? []
       member.unmatched = unmatchedIds.has(professor.professor_id)
-      member.needsObserver = unmatchedIds.has(professor.professor_id) || lowIds.has(professor.professor_id)
+      member.needsObserver = waitingIds.has(professor.professor_id) && !member.unmatched
       return member
     }),
   }
