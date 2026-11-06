@@ -5,6 +5,7 @@ import { getProfessorObservations } from '../api/observations'
 import type { ProfessorObservations } from '../api/observations'
 import type { EligibleObserver } from '../api/signups'
 import { downloadCsv } from '../utils/csv'
+import { matchesSearch } from '../utils/search'
 import type { CurrentTerm } from '../api/evaluationStatus'
 import { LEVEL_COLORS } from '../theme'
 import type {
@@ -101,14 +102,12 @@ function FacultyPage({ user }: PageProps) {
   const overdueCount = faculty.filter((f) => f.statusTone === 'overdue').length
 
   const rows = useMemo(() => {
-    const q = search.trim().toLowerCase()
     const match = filter ? FILTERS.find((f) => f.key === filter)!.match : () => true
     return faculty.filter(
       (f) =>
         match(f) &&
         (level === 'All levels' || f.level === level) &&
-        (!q ||
-          [f.name, f.email, f.level, ...f.courses].some((text) => text.toLowerCase().includes(q))),
+        matchesSearch(search, [f.name, f.email, f.level, ...f.courses]),
     ).sort((a, b) => {
       const cmp = COMPARATORS[sort.key](a, b)
       return sort.dir === 'asc' ? cmp : -cmp

@@ -15,6 +15,7 @@ import {
   updateCriterion,
 } from '../api/templates'
 import type { AppliesTo, FullTemplate, TemplateCriterion, TemplateInfo } from '../api/templates'
+import { matchesSearch } from '../utils/search'
 
 type Modality = AppliesTo
 
@@ -182,9 +183,8 @@ function EvaluationCriteriaPage() {
   const dirty = draft !== null && saved !== null && JSON.stringify({ ...draft, active: saved.active }) !== JSON.stringify(saved)
 
   const visible = useMemo(() => {
-    const q = search.trim().toLowerCase()
     const match = FILTERS.find((f) => f.key === filter)!.match
-    return criteria.filter((c) => match(c) && (!q || [c.text, ...c.points].some((t) => t.toLowerCase().includes(q))))
+    return criteria.filter((c) => match(c) && matchesSearch(search, [c.text, ...c.points]))
   }, [criteria, search, filter])
 
   const isFiltering = filter !== 'all' || search.trim() !== ''
