@@ -71,25 +71,3 @@ export type AcSettings = typeof AC_SETTINGS
 export const RANK_COUNTS = { assistant: 18, associate: 11, full: 7, lecturer: 6 }
 
 export const LAST_COURSEBOOK_PULL = '2026-08-18'
-
-export const TEACHER_SETTINGS = {
-  scheduleView: 'Week' as 'Day' | 'Week' | 'Month',
-  weekStart: 'Mon' as 'Sun' | 'Mon',
-  dayStart: '8:00 AM',
-  dayEnd: '5:00 PM',
-  timeZone: 'America/Chicago (CT)',
-  showOfficeHours: true,
-  showObserving: true,
-  notifyObserverRequest: both,
-  notifyAwaitingConfirmation: both,
-  notifyConfirmed: { email: false, inApp: true } as Channels,
-  deadlineReminder: '7 days before' as (typeof DEADLINE_NOTICES)[number],
-  notifyDeadline: both,
-  notifyOverdue: both,
-  weeklyDigest: 'Monday, 8:00 AM' as (typeof DIGEST_TIMES)[number],
-}
-
-export type TeacherSettings = typeof TEACHER_SETTINGS
-
-export const HOURS = ['6:00 AM', '7:00 AM', '8:00 AM', '9:00 AM', '10:00 AM', '12:00 PM', '3:00 PM', '5:00 PM', '7:00 PM', '9:00 PM', '10:00 PM']
-export const TIME_ZONES = ['America/Chicago (CT)', 'America/New_York (ET)', 'America/Denver (MT)', 'America/Los_Angeles (PT)']
