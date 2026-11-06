@@ -35,10 +35,7 @@ CURRENT_CYCLE_SQL = """
 SELECT at.Semester, at.YearNum
 FROM EvaluationCycle ec
 JOIN AcademicTerm at ON ec.TermID = at.TermID
-WHERE at.Semester IN ('Spring', 'Fall')
-ORDER BY at.YearNum DESC,
-    CASE at.Semester WHEN 'Spring' THEN 1 WHEN 'Fall' THEN 2 END DESC
-LIMIT 1
+WHERE ec.CycleID = current_cycle_id()
 """
 
 

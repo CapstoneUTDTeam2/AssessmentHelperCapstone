@@ -19,16 +19,8 @@ DEADLINES = [
 DEADLINE_COLUMNS = {key: column for key, column, _ in DEADLINES}
 DEADLINE_LABELS = {key: label for key, _, label in DEADLINES}
 
-# Current cycle is the latest Spring/Fall EvaluationCycle term.
-CURRENT_CYCLE_SQL = """
-SELECT ec.cycleid
-FROM EvaluationCycle ec
-JOIN AcademicTerm at ON ec.TermID = at.TermID
-WHERE at.Semester IN ('Spring', 'Fall')
-ORDER BY at.YearNum DESC,
-    CASE at.Semester WHEN 'Spring' THEN 1 WHEN 'Fall' THEN 2 END DESC
-LIMIT 1
-"""
+# The cycle in progress on the campus date (or the frozen tester date); see current_cycle_id in the DDL.
+CURRENT_CYCLE_SQL = "SELECT current_cycle_id() AS cycleid"
 
 CYCLE_COLUMNS = """
     ec.cycleid,
