@@ -137,7 +137,7 @@ export function committeeKpis(data: CommitteeOverview | null): Kpi[] {
     return [
       {
         label: 'Overdue Evaluations',
-        detail: 'KPI 1.2 · overdue this cycle',
+        detail: 'Overdue this cycle',
         value: String(k.overdue_evaluation_count.count),
         accent: k.overdue_evaluation_count.count > 0 ? 'red' : 'green',
       },
@@ -149,45 +149,45 @@ export function committeeKpis(data: CommitteeOverview | null): Kpi[] {
   return [
     {
       label: 'Eligibility Accuracy',
-      detail: `KPI 1.1 · ${accuracy.correct_matches} of ${accuracy.total_matches} matches correct`,
+      detail: `${accuracy.correct_matches} of ${accuracy.total_matches} matches correct`,
       value: formatPercent(accuracy.percent),
       accent: accuracy.incorrect.length > 0 ? 'red' : 'green',
       detailPositive: accuracy.total_matches > 0 && accuracy.incorrect.length === 0,
     },
     {
       label: 'Overdue Evaluations',
-      detail: 'KPI 1.2 · overdue this cycle',
+      detail: 'Overdue this cycle',
       value: String(k.overdue_evaluation_count.count),
       accent: k.overdue_evaluation_count.count > 0 ? 'red' : 'green',
     },
     {
       label: 'Participation Rate',
-      detail: `KPI 2.1 · ${participation.signed_up} signed up / ${participation.due} due`,
+      detail: `${participation.signed_up} signed up / ${participation.due} due`,
       value: formatPercent(participation.percent),
       accent: 'black',
       detailPositive: (participation.percent ?? 0) >= 75,
     },
     {
       label: 'Observer Utilization',
-      detail: `KPI 2.2 · ${utilization.observers} observers / ${utilization.signed_up} signed up`,
+      detail: `${utilization.observers} observers / ${utilization.signed_up} signed up`,
       value: formatPercent(utilization.percent),
       accent: 'orange',
     },
     {
       label: 'List Sufficiency',
-      detail: `KPI 3.1 · ${sufficiency.saved_matches} matches / ${sufficiency.signups} sign-ups`,
+      detail: `${sufficiency.saved_matches} matches / ${sufficiency.signups} sign-ups`,
       value: sufficiency.average_list_size === null ? '—' : sufficiency.average_list_size.toFixed(1),
       accent: 'green',
     },
     {
       label: 'Missing Observations',
-      detail: 'KPI 4.1 · approved but did not happen',
+      detail: 'Approved but did not happen',
       value: String(missing.count),
       accent: missing.count > 0 ? 'red' : 'green',
     },
     {
       label: 'Survey Completion',
-      detail: `KPI 4.2 · ${survey.completed_full_process} full process / ${survey.signups} sign-ups`,
+      detail: `${survey.completed_full_process} full process / ${survey.signups} sign-ups`,
       value: formatPercent(survey.percent),
       accent: 'black',
     },
@@ -202,13 +202,13 @@ function fallbackKpis(data: CommitteeOverview | null): Kpi[] {
   return [
     {
       label: 'Overdue Evaluations',
-      detail: 'KPI 1.2 · from evaluation-status',
+      detail: 'Overdue this cycle',
       value: String(overdue),
       accent: overdue > 0 ? 'red' : 'green',
     },
     {
       label: 'Participation Rate',
-      detail: signedUp === undefined ? 'KPI 2.1 · unavailable' : `KPI 2.1 · ${signedUp} signed up / ${due} due`,
+      detail: signedUp === undefined ? 'Unavailable' : `${signedUp} signed up / ${due} due`,
       value: due === 0 || signedUp === undefined ? '—' : `${Math.round((signedUp / due) * 100)}%`,
       accent: 'black',
     },

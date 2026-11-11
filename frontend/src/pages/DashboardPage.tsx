@@ -185,7 +185,7 @@ function DashboardPage({ user }: PageProps) {
       {notice && <p className="mt-3 text-[11px] text-[#3f8a55]">{notice}</p>}
       {data && !data.kpis && (
         <p className="mt-3 text-[11px] text-neutral-500">
-          KPIs are unavailable (GET /api/kpis failed), so only counts from the other endpoints are shown.
+          Some metrics are unavailable right now, so only basic counts are shown.
         </p>
       )}
 
@@ -261,7 +261,7 @@ function HireLevelCard({ rows, live }: { rows: LevelRow[]; live: boolean }) {
     <section className="rounded-lg border border-neutral-200 bg-white p-4">
       <h2 className="text-sm font-semibold text-neutral-900">By Hire Level</h2>
       <p className="text-[10px] text-neutral-500">
-        {live ? 'From GET /api/dashboard/executive' : 'From evaluation-status (executive dashboard unavailable)'}
+        {live ? 'This cycle' : 'Partial data (executive dashboard unavailable)'}
       </p>
 
       <table className="mt-3 w-full text-[11px]">

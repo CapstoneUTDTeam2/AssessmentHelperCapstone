@@ -146,7 +146,7 @@ function CoursePage() {
     return (
       <main className="min-w-0 flex-1 px-6 py-7">
         <h1 className="text-xl font-semibold text-neutral-900">Course Overview</h1>
-        <p className="mt-2 text-sm text-neutral-500">Loading courses from the API…</p>
+        <p className="mt-2 text-sm text-neutral-500">Loading courses…</p>
       </main>
     )
   }

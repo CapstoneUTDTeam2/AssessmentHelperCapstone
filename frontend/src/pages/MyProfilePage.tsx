@@ -386,7 +386,7 @@ function EvaluationHistoryCard({ received, nextEvaluation }: { received: Profess
       </table>
 
       <div className="mt-3 flex justify-between gap-2 rounded-md bg-neutral-50 px-2.5 py-2 text-[10px]">
-        <span className="text-neutral-500">Next evaluation (from due-status API)</span>
+        <span className="text-neutral-500">Next evaluation</span>
         <span className="text-[#e0791a]">{nextEvaluation}</span>
       </div>
     </section>
