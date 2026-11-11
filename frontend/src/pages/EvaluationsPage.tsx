@@ -76,7 +76,7 @@ function StatisticsCard({ data }: { data: CommitteeOverview | null }) {
   return (
     <section className="min-w-0 rounded-lg border border-neutral-200 bg-white p-4">
       <h2 className="text-sm font-semibold text-neutral-900">Evaluation Statistics</h2>
-      <p className="mt-0.5 text-[10px] text-neutral-500">This cycle, from the KPI, executive dashboard and observations APIs.</p>
+      <p className="mt-0.5 text-[10px] text-neutral-500">This cycle</p>
 
       <StatSection title="Faculty due by hire level" meta="Executive dashboard">
         <ul className="space-y-2">
@@ -110,7 +110,7 @@ function StatisticsCard({ data }: { data: CommitteeOverview | null }) {
         </ul>
       </StatSection>
 
-      <StatSection title="Eligibility accuracy" meta="KPI 1.1">
+      <StatSection title="Eligibility accuracy" meta="Saved observer matches">
         {accuracy ? (
           <>
             <p className="text-[11px] text-neutral-700">

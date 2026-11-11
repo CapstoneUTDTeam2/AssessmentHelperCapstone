@@ -271,7 +271,7 @@ function LoginPage({ onLogin }: LoginPageProps) {
           <p className="flex items-center gap-1.5 font-medium text-neutral-800">
             Demo login ({ROLES[role].label}) <MockDataBadge />
           </p>
-          <p className="mt-1">Built-in account, used when the login API has no password for it.</p>
+          <p className="mt-1">Built-in account, used when the login service has no password for it.</p>
           <p className="mt-1">
             Email: <code className="text-neutral-900">{demo.email}</code>
           </p>

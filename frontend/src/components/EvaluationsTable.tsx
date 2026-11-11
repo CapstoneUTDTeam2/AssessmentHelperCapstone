@@ -116,7 +116,7 @@ function EvaluationsCard({ rows: evaluations = [], today = new Date().toISOStrin
         <div>
           <h2 className="text-sm font-semibold text-neutral-900">Outstanding &amp; Upcoming Evaluations</h2>
           <p className="mt-0.5 text-[10px] text-neutral-500">
-            Due and overdue faculty from the evaluation-status API · observers from this cycle’s observations
+            Due and overdue faculty · observers from this cycle’s observations
           </p>
         </div>
         <a href="#" className="shrink-0 text-[11px] text-[#e0791a] hover:underline" onClick={(e) => e.preventDefault()}>
