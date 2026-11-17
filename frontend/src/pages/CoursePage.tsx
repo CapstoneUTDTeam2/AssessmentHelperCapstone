@@ -157,8 +157,7 @@ function CoursePage() {
         <div>
           <h1 className="text-xl font-semibold text-neutral-900">Course Overview</h1>
           <p className="mt-1 text-xs text-neutral-500">
-            {TERM} · {courses.length === COURSES.length ? COURSES.length : `${courses.length} of ${COURSES.length}`} courses · {totalSections} sections · from UTD CourseBook into Courses, Sections, and
-            TeachingAssignment
+            {TERM} · {courses.length === COURSES.length ? COURSES.length : `${courses.length} of ${COURSES.length}`} courses · {totalSections} sections · from UTD CourseBook
           </p>
           {pullMessage && <p className="mt-1 text-[11px] text-neutral-600">{pullMessage}</p>}
         </div>

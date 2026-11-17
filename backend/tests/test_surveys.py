@@ -96,7 +96,7 @@ def test_professor_survey_status(client, survey_open):
     assert body["committee_notified"] is False
     surveys = {s["role"]: s for s in body["surveys"]}
     assert surveys["Observee"]["submitted"] is True
-    assert surveys["Observee"]["response"]["process_ok"] is False  # sample ProcessStatus isn't "Satisfied"
+    assert surveys["Observee"]["response"]["process_ok"] is None  # sample ProcessStatus is neither answer
     assert surveys["Observer"]["submitted"] is False
     assert client.get("/api/professors/5/surveys").json()["surveys"] == []
     assert client.get("/api/professors/999/surveys").status_code == 404

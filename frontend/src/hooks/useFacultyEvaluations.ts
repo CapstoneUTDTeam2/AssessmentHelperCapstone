@@ -7,6 +7,8 @@ import { getAcceptedConfirmations, getIncomingRequests, getSignupRequests } from
 import type { IncomingRequests, ObserverRequest, SignupRequests } from '../api/observerRequests'
 import { getSignupObserverList } from '../api/observerSelection'
 import type { ListedObserver } from '../api/observerSelection'
+import { getProfessorAppSurveys } from '../api/appSurveys'
+import type { ProfessorAppSurveys } from '../api/appSurveys'
 import { getProfessorSurveys } from '../api/surveys'
 import type { ProfessorSurveys } from '../api/surveys'
 
@@ -21,6 +23,7 @@ export interface FacultyEvaluations {
   sent: SignupRequests | null
   observerList: ListedObserver[]
   surveys: ProfessorSurveys | null
+  appSurveys: ProfessorAppSurveys | null
   loading: boolean
   error: string | null
   reload: () => void
@@ -39,6 +42,7 @@ export function useFacultyEvaluations(professorId: number | null, signupId: numb
     sent: null,
     observerList: [],
     surveys: null,
+    appSurveys: null,
   })
   const [loading, setLoading] = useState(professorId !== null)
   const [error, setError] = useState<string | null>(null)
@@ -62,7 +66,8 @@ export function useFacultyEvaluations(professorId: number | null, signupId: numb
       signupId === null ? null : soft(getSignupRequests(signupId, signal), 'your requests'),
       signupId === null ? null : soft(getSignupObserverList(signupId, signal), 'your observer list'),
       soft(getProfessorSurveys(professorId, signal), 'surveys'),
-    ]).then(([status, observations, incoming, accepted, sent, list, surveys]) => {
+      soft(getProfessorAppSurveys(professorId, signal), 'app surveys'),
+    ]).then(([status, observations, incoming, accepted, sent, list, surveys, appSurveys]) => {
       if (signal.aborted) return
       setData({
         status,
@@ -72,6 +77,7 @@ export function useFacultyEvaluations(professorId: number | null, signupId: numb
         sent,
         observerList: list?.observers ?? [],
         surveys,
+        appSurveys,
       })
       setError(failed.length ? `Couldn’t load ${failed.join(', ')}.` : null)
       setLoading(false)
