@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ProfessorObservation } from '../api/observations'
-import { IncomingRequestsCard, RequestObserversCard, SurveyCard } from '../components/EvaluationRequestCards'
+import { AppSurveyCard, IncomingRequestsCard, RequestObserversCard, SurveyCard } from '../components/EvaluationRequestCards'
 import { SignupActions, SignupStatus } from '../components/SignupActions'
 import SortHeader from '../components/SortHeader'
 import { useFacultyEvaluations } from '../hooks/useFacultyEvaluations'
@@ -74,7 +74,10 @@ function TeacherEvaluationsPage({ navigate }: PageProps) {
 
   const sessions = sessionsOf(data)
   const upcoming = sessions.filter((s) => (s.observation_date ?? '9999') >= today && !s.locked && !s.not_held).sort(byDate)
-  const completed = sessions.filter((s) => !upcoming.includes(s)).sort((a, b) => byDate(b, a))
+  const past = sessions.filter((s) => !upcoming.includes(s)).sort((a, b) => byDate(b, a))
+  // Only reports signed by both count as completed; not held or unsigned ones are listed apart.
+  const completed = past.filter((s) => s.locked)
+  const notCompleted = past.filter((s) => !s.locked)
   const openReport = (id: number) => navigate('Observation Report', String(id))
   const reload = () => {
     data.reload()
@@ -121,13 +124,25 @@ function TeacherEvaluationsPage({ navigate }: PageProps) {
         )}
         <IncomingRequestsCard professorId={professorId} incoming={data.incoming} accepted={data.accepted} onChanged={reload} />
         <SurveyCard professorId={professorId} surveys={data.surveys} onChanged={reload} />
+        <AppSurveyCard professorId={professorId} surveys={data.appSurveys} onChanged={reload} />
         <UpcomingSessionsCard
           items={upcoming}
           loading={data.loading}
           onOpenReport={openReport}
           onOpenCalendar={() => navigate('Dashboard')}
         />
-        <RecentlyCompletedCard
+        {notCompleted.length > 0 && (
+          <PastSessionsCard
+            title="Not completed"
+            detail="Reported as not happening, or the report isn't signed by both yet"
+            items={notCompleted}
+            today={today}
+            onOpenReport={openReport}
+          />
+        )}
+        <PastSessionsCard
+          title="Recently completed"
+          empty="Nothing completed yet."
           items={completed}
           today={today}
           onOpenReport={openReport}
@@ -157,7 +172,10 @@ function AttentionCard({
   const confirmed = data.sent?.signup_status === 'Requests Sent' ? (data.sent?.confirmed_count ?? 0) : 0
   const surveysDue =
     data.surveys?.window === 'open' ? data.surveys.surveys.filter((s) => !s.submitted).map((s) => s.role) : []
-  const count = toFill.length + toSign.length + (pendingRequests ? 1 : 0) + (confirmed ? 1 : 0) + (surveysDue.length ? 1 : 0)
+  const appSurveysDue =
+    data.appSurveys?.window === 'open' ? data.appSurveys.surveys.filter((s) => !s.submitted).length : 0
+  const count =
+    toFill.length + toSign.length + (pendingRequests ? 1 : 0) + (confirmed ? 1 : 0) + (surveysDue.length ? 1 : 0) + (appSurveysDue ? 1 : 0)
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
   return (
@@ -229,6 +247,17 @@ function AttentionCard({
             detail={`As the ${surveysDue.join(' and ').toLowerCase()} · due ${format(data.surveys!.due, { month: 'short', day: 'numeric' })}`}
           >
             <button type="button" onClick={() => scrollTo('post-observation-survey')} className={primary}>
+              Take survey
+            </button>
+          </AttentionItem>
+        )}
+        {appSurveysDue > 0 && (
+          <AttentionItem
+            tone="orange"
+            title="Take the app improvement survey"
+            detail={`${appSurveysDue} signed observation${appSurveysDue === 1 ? '' : 's'} · due ${format(data.appSurveys!.due, { month: 'short', day: 'numeric' })}`}
+          >
+            <button type="button" onClick={() => scrollTo('app-survey')} className={primary}>
               Take survey
             </button>
           </AttentionItem>
@@ -409,31 +438,42 @@ function UpcomingSessionsCard({
   )
 }
 
-function RecentlyCompletedCard({
+function PastSessionsCard({
+  title,
+  detail,
+  empty,
   items,
   today,
   onOpenReport,
   showHistory,
   onToggleHistory,
 }: {
+  title: string
+  detail?: string
+  empty?: string
   items: Session[]
   today: string
   onOpenReport: (id: number) => void
-  showHistory: boolean
-  onToggleHistory: () => void
+  showHistory?: boolean
+  onToggleHistory?: () => void
 }) {
   return (
     <section className={card}>
       <div className="flex items-start justify-between gap-3">
-        <h2 className="text-sm font-semibold text-neutral-900">Recently completed</h2>
-        <button
-          type="button"
-          onClick={onToggleHistory}
-          aria-expanded={showHistory}
-          className="shrink-0 text-[11px] font-medium text-[#c4561a] hover:underline"
-        >
-          {showHistory ? 'Hide history ↑' : 'See all history →'}
-        </button>
+        <div>
+          <h2 className="text-sm font-semibold text-neutral-900">{title}</h2>
+          {detail && <p className="mt-0.5 text-[10px] text-neutral-500">{detail}</p>}
+        </div>
+        {onToggleHistory && (
+          <button
+            type="button"
+            onClick={onToggleHistory}
+            aria-expanded={showHistory}
+            className="shrink-0 text-[11px] font-medium text-[#c4561a] hover:underline"
+          >
+            {showHistory ? 'Hide history ↑' : 'See all history →'}
+          </button>
+        )}
       </div>
 
       <ul className="mt-2 divide-y divide-neutral-100">
@@ -479,7 +519,7 @@ function RecentlyCompletedCard({
             </li>
           )
         })}
-        {items.length === 0 && <li className="py-6 text-center text-[11px] text-neutral-500">Nothing completed yet.</li>}
+        {items.length === 0 && empty && <li className="py-6 text-center text-[11px] text-neutral-500">{empty}</li>}
       </ul>
     </section>
   )

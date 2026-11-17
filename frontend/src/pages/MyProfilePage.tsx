@@ -228,7 +228,7 @@ function CurrentCoursesCard({ courses, termLabel }: { courses: CurrentCourse[]; 
         <div>
           <h2 className="text-sm font-semibold text-neutral-900">Current Courses · {termLabel}</h2>
           <p className="mt-0.5 text-[10px] text-neutral-500">
-            {courseCount} courses · {courses.length} sections · from TeachingAssignment
+            {courseCount} courses · {courses.length} sections
           </p>
         </div>
       </div>

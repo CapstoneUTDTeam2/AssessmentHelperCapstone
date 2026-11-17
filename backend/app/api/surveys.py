@@ -55,10 +55,14 @@ WHERE r.CycleID = :cycle_id
 ORDER BY r.SubmissionDate, r.SubmissionTime, r.SurveyResponseID
 """
 PARTICIPANTS_SQL = """
-SELECT os.ObserveeProfessorID AS professorid, 'Observee' AS role FROM ObservationSignup os WHERE os.CycleID = :cycle_id
-UNION
-SELECT o.ObserverProfessorID, 'Observer' FROM Observation o
-JOIN ObservationSignup os ON o.SignupID = os.SignupID WHERE os.CycleID = :cycle_id
+SELECT x.professorid, x.role, p.professorname
+FROM (
+    SELECT os.ObserveeProfessorID AS professorid, 'Observee' AS role FROM ObservationSignup os WHERE os.CycleID = :cycle_id
+    UNION
+    SELECT o.ObserverProfessorID, 'Observer' FROM Observation o
+    JOIN ObservationSignup os ON o.SignupID = os.SignupID WHERE os.CycleID = :cycle_id
+) x
+JOIN Professors p ON p.ProfessorID = x.professorid
 """
 MARK_NOTIFIED_SQL = "UPDATE EvaluationCycle SET SurveyNotificationSentAt = :at WHERE CycleID = :cycle_id"
 
@@ -88,7 +92,8 @@ def _response_payload(row):
         "survey_response_id": row["surveyresponseid"],
         "role": row["role"],
         "submitted_at": _stamp(row["submissiondate"], row["submissiontime"]),
-        "process_ok": None if row["processstatus"] is None else row["processstatus"] == PROCESS_OK,
+        # Anything other than the two answers (such as older sample rows) reads as unanswered.
+        "process_ok": {PROCESS_OK: True, PROCESS_NOT_OK: False}.get(row["processstatus"]),
         "difficulties": row["difficulties"],
         "improvements": row["improvementconditions"],
     }
@@ -241,7 +246,11 @@ def list_survey_responses(cycle_id: int | None = Query(default=None, description
             for r in rows
         ],
         "not_submitted": sorted(
-            [{"professor_id": p["professorid"], "role": p["role"]} for p in participants if (p["professorid"], p["role"]) not in done],
+            [
+                {"professor_id": p["professorid"], "professor_name": p["professorname"], "role": p["role"]}
+                for p in participants
+                if (p["professorid"], p["role"]) not in done
+            ],
             key=lambda item: (item["professor_id"], item["role"]),
         ),
     }

@@ -52,7 +52,7 @@ def test_full_cycle(client, monkeypatch):
     sent = client.post("/api/observer-requests", json={"signup_id": signup_id, "observee_id": 5, "observer_ids": [500]})
     assert sent.status_code == 201
     incoming = client.get("/api/observer-requests", params={"observer_id": 500}).json()["requests"]
-    assert incoming[0]["proposed_dates"] == [str(tuesday), str(thursday)]
+    assert incoming[0]["proposed_dates"] == sorted([str(tuesday), str(thursday)])
     rid = incoming[0]["request_id"]
     assert client.post(f"/api/observer-requests/{rid}/accept", json={"observer_id": 500}).status_code == 200
 

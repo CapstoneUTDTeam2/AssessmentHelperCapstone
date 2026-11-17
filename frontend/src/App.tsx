@@ -16,6 +16,7 @@ import MyProfilePage from './pages/MyProfilePage'
 import ObservationReportPage from './pages/ObservationReportPage'
 import ReportsPage from './pages/ReportsPage'
 import SettingsPage from './pages/SettingsPage'
+import SurveysPage from './pages/SurveysPage'
 import TeacherDashboardPage from './pages/TeacherDashboardPage'
 import TeacherEvaluationsPage from './pages/TeacherEvaluationsPage'
 import TeacherSettingsPage from './pages/TeacherSettingsPage'
@@ -35,6 +36,7 @@ const PAGES: Record<AppRole, Record<string, ComponentType<PageProps>>> = {
     Courses: CoursePage,
     Evaluations: EvaluationsPage,
     Reports: ReportsPage,
+    Surveys: SurveysPage,
     'Evaluation Criteria': EvaluationCriteriaPage,
     Settings: SettingsPage,
     'Observation Report': ObservationReportPage,

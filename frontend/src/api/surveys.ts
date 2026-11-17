@@ -40,7 +40,7 @@ export interface SurveyResponses {
   committee_notified_at: string | null
   response_count: number
   responses: (SurveyResponse & { professor_id: number; professor_name: string; signup_id: number })[]
-  not_submitted: { professor_id: number; role: SurveyRole }[]
+  not_submitted: { professor_id: number; professor_name: string; role: SurveyRole }[]
 }
 
 export function getProfessorSurveys(professorId: number, signal?: AbortSignal) {

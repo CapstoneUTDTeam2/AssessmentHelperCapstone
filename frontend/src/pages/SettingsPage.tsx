@@ -82,9 +82,9 @@ function SettingsPage() {
     {
       id: 'deadlines',
       title: 'Cycle & Deadlines',
-      description: `EvaluationCycle columns for ${term}. These four dates are the only settings the database stores.`,
+      description: `Deadlines for the ${term} evaluation cycle.`,
       content: [
-        <Row key="term" label="Current evaluation cycle" description="Latest Spring or Fall EvaluationCycle row">
+        <Row key="term" label="Current evaluation cycle" description="The Spring or Fall semester in progress">
           <span className="rounded-md bg-neutral-50 px-2.5 py-1.5 text-xs text-neutral-700">{term}</span>
         </Row>,
         <Row
@@ -115,7 +115,7 @@ function SettingsPage() {
         <Row
           key="app"
           label="App feedback deadline"
-          description={`App survey after the observation · ${deadlineStatus(draft.app_feedback)}`}
+          description={`App survey once both have signed the report · ${deadlineStatus(draft.app_feedback)}`}
         >
           <DateField
             label="App feedback deadline"
@@ -133,11 +133,11 @@ function SettingsPage() {
     {
       id: 'coursebook',
       title: 'CourseBook',
-      description: 'Nebula Labs CourseBook fills Department, AcademicTerm, Courses, Sections, Professors, and TeachingAssignment',
+      description: 'Departments, terms, courses, sections and instructors come from UTD CourseBook',
       content: [
-        <Notice key="notice" title="Source-backed tables only">
-          Rank and start term are not in CourseBook; those stay on Professors for the committee. If the pull fails,
-          existing rows are kept.
+        <Notice key="notice" title="What an update changes">
+          Rank and start semester aren't in CourseBook, so updating never changes them. If the update fails, the
+          current data is kept.
         </Notice>,
         <Row
           key="pull"
@@ -172,7 +172,7 @@ function SettingsPage() {
     {
       id: 'policy',
       title: 'Evaluation Policy',
-      description: 'Encoded in the ProfessorEvaluationStatus view and matching functions. Not editable here.',
+      description: 'Set by the evaluation process. Ask the development team to change these rules.',
       content: [
         <Row key="assistant" label="Assistant Professor" description="Once every calendar year">
           <span className="rounded-md bg-neutral-50 px-2.5 py-1.5 text-xs text-neutral-700">Every year</span>
@@ -200,7 +200,7 @@ function SettingsPage() {
       {saveError && <p className="px-6 pt-4 text-[11px] text-[#b3261e]">{saveError}</p>}
       <SettingsLayout
         title="Settings"
-        subtitle="Deadlines save to EvaluationCycle. CourseBook pull writes courses, sections, professors, and teaching assignments."
+        subtitle="Cycle deadlines, course data and the evaluation rules."
         sections={sections}
         dirty={dirty}
         onSave={() => {

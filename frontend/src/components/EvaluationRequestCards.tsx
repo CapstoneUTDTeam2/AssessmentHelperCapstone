@@ -9,6 +9,8 @@ import { acceptRequest, declineRequest, selectObserver, sendObserverRequests } f
 import type { IncomingRequests, ObserverChoice, ObserverRequest, RequestStatus, SignupRequests } from '../api/observerRequests'
 import type { ListedObserver } from '../api/observerSelection'
 import type { ObserveeSignup } from '../api/signups'
+import { submitAppSurvey } from '../api/appSurveys'
+import type { ProfessorAppSurveys } from '../api/appSurveys'
 import { submitSurvey } from '../api/surveys'
 import type { ProfessorSurveys, SurveyRole } from '../api/surveys'
 import { formatMeetingDays } from '../utils/calendar'
@@ -499,7 +501,9 @@ export function SurveyCard({
               <p className="font-semibold">
                 {s.role} survey submitted{s.response.submitted_at ? ` · ${shortDate(s.response.submitted_at.slice(0, 10))}` : ''}
               </p>
-              <p className="mt-0.5">Process was {s.response.process_ok ? 'OK' : 'not OK'}.</p>
+              {s.response.process_ok != null && (
+                <p className="mt-0.5">Process was {s.response.process_ok ? 'OK' : 'not OK'}.</p>
+              )}
             </div>
           ) : surveys.window === 'open' ? (
             <SurveyForm key={s.role} role={s.role} professorId={professorId} onSubmitted={onChanged} />
@@ -564,6 +568,112 @@ function SurveyForm({ role, professorId, onSubmitted }: { role: SurveyRole; prof
       <div className="mt-2 flex justify-end">
         <button type="button" disabled={busy || processOk === null} onClick={submit} className={primary}>
           Submit survey
+        </button>
+      </div>
+      <ErrorLine error={error} />
+    </div>
+  )
+}
+
+/** App improvement survey: one per observation signed by both, until the app feedback deadline. */
+export function AppSurveyCard({
+  professorId,
+  surveys,
+  onChanged,
+}: {
+  professorId: number
+  surveys: ProfessorAppSurveys | null
+  onChanged: () => void
+}) {
+  if (!surveys || surveys.surveys.length === 0) return null
+  return (
+    <section id="app-survey" className={card}>
+      <CardHeader
+        title="App improvement survey"
+        detail={
+          surveys.window === 'open'
+            ? `Tell us how the app worked for you · open until ${shortDate(surveys.due)}`
+            : `Closed on ${shortDate(surveys.due)}`
+        }
+      />
+      <div className="mt-3 space-y-3">
+        {surveys.surveys.map((s) => {
+          const label = `As the ${s.role.toLowerCase()} · ${s.course_code}.${s.section_name} with ${
+            s.role === 'Observee' ? s.observer_name : s.observee_name
+          }`
+          if (s.submitted && s.response) {
+            return (
+              <div key={`${s.observation_id}-${s.role}`} className="rounded-md bg-[#e3efe6] px-3 py-2.5 text-[11px] text-[#1c4532]">
+                <p className="font-semibold">
+                  App survey submitted{s.response.submitted_on ? ` · ${shortDate(s.response.submitted_on)}` : ''}
+                </p>
+                <p className="mt-0.5">{label}</p>
+              </div>
+            )
+          }
+          if (surveys.window === 'closed') {
+            return (
+              <p key={`${s.observation_id}-${s.role}`} className="text-[11px] text-neutral-500">
+                {label} · not submitted
+              </p>
+            )
+          }
+          return (
+            <AppSurveyForm
+              key={`${s.observation_id}-${s.role}`}
+              label={label}
+              professorId={professorId}
+              observationId={s.observation_id}
+              onSubmitted={onChanged}
+            />
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function AppSurveyForm({
+  label,
+  professorId,
+  observationId,
+  onSubmitted,
+}: {
+  label: string
+  professorId: number
+  observationId: number
+  onSubmitted: () => void
+}) {
+  const [improvements, setImprovements] = useState('')
+  const [enjoyments, setEnjoyments] = useState('')
+  const { busy, error, run } = useAction()
+  const empty = !improvements.trim() && !enjoyments.trim()
+
+  const submit = () =>
+    run(async () => {
+      await submitAppSurvey({
+        professor_id: professorId,
+        observation_id: observationId,
+        improvements: improvements.trim() || undefined,
+        enjoyments: enjoyments.trim() || undefined,
+      })
+      onSubmitted()
+    }, 'Submitting the app survey failed')
+
+  return (
+    <div className="rounded-md border border-neutral-200 p-3">
+      <p className="text-xs font-semibold text-neutral-900">{label}</p>
+      <label className="mt-2 block text-[11px] text-neutral-700">
+        What should we improve in the app?
+        <textarea rows={2} value={improvements} onChange={(e) => setImprovements(e.target.value)} className={`mt-1 ${input}`} />
+      </label>
+      <label className="mt-2 block text-[11px] text-neutral-700">
+        What did you like about the app?
+        <textarea rows={2} value={enjoyments} onChange={(e) => setEnjoyments(e.target.value)} className={`mt-1 ${input}`} />
+      </label>
+      <div className="mt-2 flex justify-end">
+        <button type="button" disabled={busy || empty} onClick={submit} className={primary}>
+          Submit app survey
         </button>
       </div>
       <ErrorLine error={error} />

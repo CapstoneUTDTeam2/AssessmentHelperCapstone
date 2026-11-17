@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 import { committeeKpis, getCommitteeOverview, hireLevel, notifyObservees, startObserverSelection } from '../api/committee'
 import type { CommitteeOverview } from '../api/committee'
 import { ApiError } from '../api/client'
@@ -211,18 +212,112 @@ function DashboardPage({ user }: PageProps) {
           {data?.executive && <UnmatchedReport faculty={data.executive.unmatched_faculty} />}
         </div>
 
-        <div className="flex flex-col gap-4">
-          <EvaluationsCard rows={data?.rows ?? []} today={data?.cycle?.today} />
-          {user.tester && <DueMatchesCard />}
-          <SelectionPanel
-            signups={data?.signups?.signups ?? []}
-            alerts={data?.alerts ?? []}
-            onNotifyAll={() => notify()}
-            onNotifyOne={(id) => notify(id)}
-          />
-        </div>
+        <DashboardTabs
+          tabs={[
+            {
+              id: 'evaluations',
+              label: 'Outstanding & Upcoming',
+              count: data?.rows.length ?? 0,
+              content: <EvaluationsCard rows={data?.rows ?? []} today={data?.cycle?.today} />,
+            },
+            ...(user.tester
+              ? [{ id: 'matches', label: 'Possible observer matches', content: <DueMatchesCard /> }]
+              : []),
+            {
+              id: 'selection',
+              label: 'Observer Selection',
+              count: data?.signups?.signups.length ?? 0,
+              alert: (data?.alerts.length ?? 0) > 0,
+              content: (
+                <SelectionPanel
+                  signups={data?.signups?.signups ?? []}
+                  alerts={data?.alerts ?? []}
+                  onNotifyAll={() => notify()}
+                  onNotifyOne={(id) => notify(id)}
+                />
+              ),
+            },
+          ]}
+        />
       </div>
     </main>
+  )
+}
+
+const TAB_KEY = 'assessment-helper-dashboard-tab'
+
+interface DashboardTab {
+  id: string
+  label: string
+  count?: number
+  /** Shows a red dot, e.g. signups with no or too few observers. */
+  alert?: boolean
+  content: ReactNode
+}
+
+/** One card slot on the dashboard; tabs switch between the tables. Remembers the last tab for this session. */
+function DashboardTabs({ tabs }: { tabs: DashboardTab[] }) {
+  const [active, setActive] = useState(() => {
+    try {
+      return sessionStorage.getItem(TAB_KEY) ?? tabs[0].id
+    } catch {
+      return tabs[0].id
+    }
+  })
+  const current = tabs.find((tab) => tab.id === active) ?? tabs[0]
+  const choose = (id: string) => {
+    setActive(id)
+    try {
+      sessionStorage.setItem(TAB_KEY, id)
+    } catch {
+      // Storage unavailable; the tab just won't be remembered.
+    }
+  }
+
+  return (
+    <div className="flex min-w-0 flex-col">
+      <div role="tablist" aria-label="Dashboard tables" className="flex flex-wrap gap-1 border-b border-neutral-200">
+        {tabs.map((tab) => {
+          const selected = tab.id === current.id
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              id={`dashboard-tab-${tab.id}`}
+              aria-selected={selected}
+              aria-controls="dashboard-tab-panel"
+              onClick={() => choose(tab.id)}
+              className={`-mb-px flex items-center gap-1.5 rounded-t-md border px-3 py-2 text-xs transition-colors ${
+                selected
+                  ? 'border-neutral-200 border-b-white bg-white font-semibold text-neutral-900'
+                  : 'border-transparent text-neutral-600 hover:text-neutral-900'
+              }`}
+            >
+              {tab.label}
+              {tab.count !== undefined && (
+                <span
+                  className={`rounded-full px-1.5 text-[10px] font-medium ${
+                    selected ? 'bg-[#fdf1e6] text-[#c4561a]' : 'bg-neutral-200 text-neutral-600'
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              )}
+              {tab.alert && <span className="h-1.5 w-1.5 rounded-full bg-[#b3261e]" aria-label="Needs attention" />}
+            </button>
+          )
+        })}
+      </div>
+      <div
+        id="dashboard-tab-panel"
+        role="tabpanel"
+        aria-labelledby={`dashboard-tab-${current.id}`}
+        className="min-w-0 [&>section]:rounded-t-none [&>section]:border-t-0"
+      >
+        {current.content}
+      </div>
+    </div>
   )
 }
 

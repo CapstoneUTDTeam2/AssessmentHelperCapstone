@@ -1,7 +1,7 @@
 import type { Role, User } from '../auth/demoAccounts'
 
 const NAV_ITEMS: Record<Exclude<Role, 'tester'>, string[]> = {
-  coordinator: ['Dashboard', 'Faculty', 'Courses', 'Evaluations', 'Reports', 'Evaluation Criteria', 'Settings'],
+  coordinator: ['Dashboard', 'Faculty', 'Courses', 'Evaluations', 'Reports', 'Surveys', 'Evaluation Criteria', 'Settings'],
   faculty: ['Dashboard', 'My Profile', 'Evaluations', 'Settings'],
 }
 
