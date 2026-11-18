@@ -17,6 +17,7 @@ from app.api.templates import router as templates_router
 from app.api.observations import router as observations_router
 from app.api.surveys import router as surveys_router
 from app.api.app_surveys import router as app_surveys_router
+from app.api.evaluation_policy import router as evaluation_policy_router
 from app.api.kpis import router as kpis_router
 from app.api.auth import router as auth_router
 from app.api.observer_requests import router as observer_request_router
@@ -48,6 +49,7 @@ app.include_router(templates_router)
 app.include_router(observations_router)
 app.include_router(surveys_router)
 app.include_router(app_surveys_router)
+app.include_router(evaluation_policy_router)
 app.include_router(kpis_router)
 app.include_router(auth_router)
 app.include_router(cycle_deadlines_router)

@@ -38,7 +38,7 @@ function DueMatchesCard() {
         <MockDataBadge />
       </h2>
       <p className="mt-0.5 text-[10px] text-neutral-500">
-        Tester AC preview · {term} · if every Due professor signed up · up to 5 observers each
+        Tester AC preview · {term} · if every Due professor signed up · observer list size from Evaluation Policy
         (same department, same course level, free at class time).
       </p>
       {error && <p className="mt-2 text-[11px] text-[#b3261e]">{error}</p>}

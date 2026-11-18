@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from app.api.cycle_deadlines import campus_now, require_before_deadline, resolve_cycle
+from app.api.evaluation_policy import signups_per_cycle
 from app.api.observer_matching import (
     ASSUMED_SIGNUP_DAYS,
     ASSUMED_SIGNUP_END,
@@ -17,9 +18,6 @@ from app.api.observer_selection import has_saved_list, saved_observers
 from app.db import engine
 
 router = APIRouter(prefix="/api", tags=["observee-signup"])
-
-# AHC-226: one course per observee per cycle for now.
-MAX_SIGNUPS_PER_CYCLE = 1
 
 PROFESSOR_SQL = """
 SELECT professorid, professorname
@@ -284,13 +282,15 @@ def create_signup(request: SignupRequest):
                 text(EXISTING_SIGNUPS_SQL),
                 {"cycle_id": cycle["cycleid"], "professor_id": request.professor_id},
             ).mappings().all()
-            if len(existing) >= MAX_SIGNUPS_PER_CYCLE:
+            # AHC-226: the limit comes from the cycle's evaluation policy (default 1).
+            limit = signups_per_cycle(conn, cycle["cycleid"])
+            if len(existing) >= limit:
                 raise HTTPException(
                     status_code=409,
                     detail={
                         "message": (
-                            "Observee already signed up for a course this cycle. "
-                            f"Limit is {MAX_SIGNUPS_PER_CYCLE} per cycle."
+                            "Observee already signed up for the most courses allowed this cycle. "
+                            f"Limit is {limit} per cycle."
                         ),
                         "existing_signup": _signup_payload(existing[0]),
                     },

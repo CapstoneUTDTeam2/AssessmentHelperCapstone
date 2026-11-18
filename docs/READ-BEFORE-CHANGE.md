@@ -8,6 +8,8 @@ The original PDF is `docs/READ-BEFORE-CHANGE.pdf` (same content; the PDF is not 
 
 **Team decision:** file upload is not required. This covers the Observee's upload about trouble during the observation and the Observer's upload of the signed observation below. Signatures are recorded in the system instead. This note overrides those two lines and the PDF.
 
+**Team decision (professor request):** the Assessment Committee can change the evaluation policy in Settings: how often Assistant and Associate/Full Profs are evaluated (1–5 calendar years), how many courses each Observee can sign up for per cycle (1–5), and how many Observers go on each list (1–10). The numbers in this document are the defaults. A cycle keeps its rules once it starts, meaning someone signed up for it or its signup deadline passed; after that, changes apply to the next cycle. The same-department and same-level eligibility rules below are not changeable.
+
 ---
 
 ## Evaluation Cycle
