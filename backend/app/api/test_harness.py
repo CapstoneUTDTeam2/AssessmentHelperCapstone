@@ -672,8 +672,87 @@ def _insert_past_observation(conn, professor, past_cycle, completed_on, current_
             "observee_id": professor["professorid"],
         },
     )
+    _fill_past_report(conn, observation_id, past_cycle["templateid"], random.Random())
     conn.execute(text("SET LOCAL session_replication_role = 'origin'"))
     return True
+
+
+# Sample wording for invented past reports. Rating 6 is N/A.
+RATING_COMMENTS = {
+    5: ("Excellent throughout the class.", "A clear strength; students responded well.", "Consistently strong."),
+    4: ("Solid, with small room to grow.", "Done well for most of the class.", "Above expectations."),
+    3: ("Meets expectations.", "Adequate; could be more consistent.", "On track."),
+}
+OBSERVEE_COMMENTS = (
+    "Thanks, I agree with this.",
+    "I'll keep working on this next semester.",
+    "Good point; I plan to adjust this.",
+)
+SUMMARIES = (
+    "Well-run class with clear explanations and good student engagement. Keep building on the use of examples.",
+    "Organized lecture that kept students involved. Pacing near the end could leave more time for questions.",
+    "Strong command of the material and a respectful classroom. Consider more checks for understanding.",
+)
+
+CRITERIA_FOR_TEMPLATE_SQL = """
+SELECT CriterionID FROM EvaluationCriterion WHERE TemplateID = :template_id ORDER BY CriterionID
+"""
+
+UNFILLED_PAST_REPORTS_SQL = """
+SELECT o.ObservationID, o.TemplateID
+FROM Observation o
+JOIN ObservationSignup os ON os.SignupID = o.SignupID
+WHERE o.Status = 'Completed'
+  AND os.CycleID <> :cycle_id
+  AND o.TemplateID IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM ObservationCriterionRating r WHERE r.ObservationID = o.ObservationID)
+"""
+
+
+# What: give an invented past report ratings, comments, and a summary like a real signed one.
+def _fill_past_report(conn, observation_id, template_id, rng):
+    # Input: observation_id and its template; caller has set session_replication_role = 'replica'
+    #        because completed reports are frozen by triggers.
+    # Output: none
+    criteria = conn.execute(text(CRITERIA_FOR_TEMPLATE_SQL), {"template_id": template_id}).scalars().all()
+    for criterion_id in criteria:
+        rating = rng.choice((5, 5, 4, 4, 4, 3))
+        conn.execute(
+            text(
+                """
+                INSERT INTO ObservationCriterionRating
+                    (ObservationID, CriterionID, TemplateID, Rating, Comments, ObserveeComment)
+                VALUES (:observation_id, :criterion_id, :template_id, :rating, :comment, :observee_comment)
+                ON CONFLICT DO NOTHING
+                """
+            ),
+            {
+                "observation_id": observation_id,
+                "criterion_id": criterion_id,
+                "template_id": template_id,
+                "rating": rating,
+                "comment": rng.choice(RATING_COMMENTS[rating]),
+                "observee_comment": rng.choice(OBSERVEE_COMMENTS),
+            },
+        )
+    conn.execute(
+        text("UPDATE Observation SET Notes = :notes WHERE ObservationID = :observation_id AND Notes IS NULL"),
+        {"notes": rng.choice(SUMMARIES), "observation_id": observation_id},
+    )
+
+
+# What: fill past-cycle completed reports that an older harness left blank.
+def _backfill_past_reports(conn, current_cycle_id, rng):
+    # Input: current cycle id (its reports are real process data and are left alone)
+    # Output: number of reports filled
+    rows = conn.execute(text(UNFILLED_PAST_REPORTS_SQL), {"cycle_id": current_cycle_id}).all()
+    if not rows:
+        return 0
+    conn.execute(text("SET LOCAL session_replication_role = 'replica'"))
+    for observation_id, template_id in rows:
+        _fill_past_report(conn, observation_id, template_id, rng)
+    conn.execute(text("SET LOCAL session_replication_role = 'origin'"))
+    return len(rows)
 
 
 # What: fill Unknown professors so the due view can compute, and seed the observer pool.
@@ -733,8 +812,10 @@ def randomize_unknowns():
                 },
             )
             repaired += 1
+        reports_filled = _backfill_past_reports(conn, current["cycleid"], rng)
         pool = _sync_observer_pool_to_signups(conn, current["cycleid"])
     return {
+        "past_reports_filled": reports_filled,
         "unknown_before": len(unknowns),
         "filled": filled,
         "past_observations": observations,

@@ -70,7 +70,7 @@ Same tables as current-semester classes. `/classes` is unchanged.
 - `POST /api/signups` — observee signs up for one section they teach. Body: `professor_id`, `section_id`, optional `preferred_dates` (list of `YYYY-MM-DD`), optional `cycle_id` (defaults to the current cycle). Returns `201` with the new `Pending` signup.
   - `404` unknown professor, section, or cycle
   - `400` section not in the cycle's term, professor does not teach the section, the signup deadline has passed, or a preferred date is in the past, after the observation deadline, or not a day the class meets
-  - `409` observee already has a signup this cycle (one course per cycle, `MAX_SIGNUPS_PER_CYCLE = 1`)
+  - `409` observee already has the most signups allowed this cycle (evaluation policy `signups_per_cycle`, default 1)
 - `GET /api/observees/{professor_id}/signup` — that observee's signup for the current cycle (`404` if none). Optional `?cycle_id=`.
 - `GET /api/observer-pool` — everyone who signed up or is an active `ObserverEnrollment` this cycle, with department and course levels taught this term. Optional `?cycle_id=`.
 

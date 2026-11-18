@@ -31,6 +31,8 @@ export interface ObserverMatches {
   observers: EligibleObserver[]
   /** True when no observer qualifies. */
   insufficient: boolean
+  /** Most names a list can hold this cycle (evaluation policy, default 5). */
+  max_observers?: number
 }
 
 export type SignupWithObservers = Signup & ObserverMatches
@@ -88,7 +90,7 @@ export async function getObserveeSignupOrNull(professorId: number, signal?: Abor
   }
 }
 
-/** Up to 5 eligible observers for a sign-up. Throws ApiError 404 if the sign-up doesn't exist. */
+/** Eligible observers for a sign-up, up to the cycle's policy limit (default 5). Throws ApiError 404 if the sign-up doesn't exist. */
 export function getEligibleObservers(signupId: number, signal?: AbortSignal) {
   return apiGet<SignupMatchResult>(`/api/signups/${signupId}/eligible-observers`, undefined, signal)
 }

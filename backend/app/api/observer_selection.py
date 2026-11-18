@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 
 from app.api.cycle_deadlines import campus_now, is_before_deadline, resolve_cycle
-from app.api.observer_matching import MAX_MATCHES
+from app.api.evaluation_policy import max_observers
 from app.db import engine
 
 router = APIRouter(prefix="/api", tags=["observer-selection"])
@@ -135,22 +135,22 @@ def _selectable(signup):
     return signup["status"] in SELECTABLE_STATUSES and not signup["hasrequests"]
 
 
-def _pick(eligible):
-    # Up to five names; random when more qualify. Picked once, then saved.
-    if len(eligible) <= MAX_MATCHES:
+def _pick(eligible, limit):
+    # Up to `limit` names (evaluation policy, default 5); random when more qualify. Picked once, then saved.
+    if len(eligible) <= limit:
         return eligible
-    return sorted(random.sample(eligible, MAX_MATCHES), key=lambda item: item["name"])
+    return sorted(random.sample(eligible, limit), key=lambda item: item["name"])
 
 
-def _alert_for(signup, eligible_count):
-    # AHC-246: none found is the alert from the process doc; fewer than five is a warning.
+def _alert_for(signup, eligible_count, limit):
+    # AHC-246: none found is the alert from the process doc; fewer than the policy's count is a warning.
     who = f"{signup['professorname']}'s {signup['coursecode']}.{signup['sectionname']}"
     if eligible_count == 0:
         level = "none"
         message = f"No eligible observers found for {who}"
-    elif eligible_count < MAX_MATCHES:
+    elif eligible_count < limit:
         level = "low"
-        message = f"Only {eligible_count} eligible observer(s) for {who}, fewer than {MAX_MATCHES}"
+        message = f"Only {eligible_count} eligible observer(s) for {who}, fewer than {limit}"
     else:
         return None
     return {
@@ -233,6 +233,7 @@ def start_observer_selection(
                 ),
             )
 
+        limit = max_observers(conn, cycle["cycleid"])
         results, alerts = [], []
         for signup in _cycle_signups(conn, cycle):
             status = signup["status"]
@@ -242,7 +243,7 @@ def start_observer_selection(
                 continue
 
             eligible = eligible_observers(conn, signup["signupid"])
-            observers = _pick(eligible)
+            observers = _pick(eligible, limit)
             conn.execute(text(DELETE_LIST_SQL), {"signup_id": signup["signupid"]})
             for observer in observers:
                 conn.execute(
@@ -256,7 +257,7 @@ def start_observer_selection(
             status = STATUS_MATCHED if observers else STATUS_UNMATCHED
             conn.execute(text(UPDATE_STATUS_SQL), {"status": status, "signup_id": signup["signupid"]})
             results.append(_signup_summary(signup, status, observers, len(eligible)))
-            alert = _alert_for(signup, len(eligible))
+            alert = _alert_for(signup, len(eligible), limit)
             if alert:
                 alerts.append(alert)
 
@@ -281,11 +282,12 @@ def list_observer_alerts(
     # Output: signups with no eligible observers (level none) or fewer than five (level low)
     with engine.connect() as conn:
         cycle = resolve_cycle(conn, cycle_id)
+        limit = max_observers(conn, cycle["cycleid"])
         alerts = []
         for signup in _cycle_signups(conn, cycle):
             if signup["hasrequests"] or signup["status"] not in SELECTABLE_STATUSES + (STATUS_LIST_READY,):
                 continue
-            alert = _alert_for(signup, len(eligible_observers(conn, signup["signupid"])))
+            alert = _alert_for(signup, len(eligible_observers(conn, signup["signupid"])), limit)
             if alert:
                 alerts.append(alert)
     return {

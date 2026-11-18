@@ -1,8 +1,8 @@
 -- AHC-218 Add view for due and overdue professor evaluations
 -- This creates the status function and the view built on it
--- Evaluation frequency (SRS 6.2):
--- Assistant professors: annually.
--- Associate and full professors: every two years.
+-- Evaluation frequency (SRS 6.2), from evaluation_policy() for the current cycle:
+-- Assistant professors: annually by default.
+-- Associate and full professors: every two years by default.
 
 -- Pass a cycle to ignore its observations. That gives each professor's status
 -- before that cycle's evaluations finished, which KPI 2.1 needs.
@@ -64,15 +64,17 @@ ProfessorData AS (
         st.YearNum AS StartYear,
         le.LastEvaluationDate,
 
+        -- Years come from the current cycle's evaluation policy (defaults 1 and 2).
         CASE
-            WHEN p.CurrentLevel = 'Assistant Professor' THEN 1
+            WHEN p.CurrentLevel = 'Assistant Professor' THEN pol.AssistantFrequencyYears
             WHEN p.CurrentLevel IN (
                 'Associate Professor', 'Full Professor'
-            ) THEN 2
+            ) THEN pol.SeniorFrequencyYears
             ELSE NULL
         END AS FrequencyYears
 
     FROM Professors p
+    CROSS JOIN evaluation_policy(current_cycle_id()) pol
     LEFT JOIN AcademicTerm st ON p.StartTermID = st.TermID
     LEFT JOIN LastEvaluation le ON p.ProfessorID = le.ProfessorID
 ),

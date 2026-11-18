@@ -390,9 +390,9 @@ function TesterBar({ user, onUser, onReload }: TesterBarProps) {
                 className="rounded border border-neutral-300 bg-white px-2 py-1"
               >
                 <option value="">Unknown (no rank)</option>
-                <option value="Assistant Professor">Assistant (yearly)</option>
-                <option value="Associate Professor">Associate (every 2 years)</option>
-                <option value="Full Professor">Full (every 2 years)</option>
+                <option value="Assistant Professor">Assistant</option>
+                <option value="Associate Professor">Associate</option>
+                <option value="Full Professor">Full</option>
               </select>
             </label>
             <button

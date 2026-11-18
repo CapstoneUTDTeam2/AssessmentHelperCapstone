@@ -6,12 +6,16 @@ import type { ObserverMatches } from '../api/signups'
 import { useAlert } from './useAlert'
 import type { AlertOptions, Alerts } from './useAlert'
 
-/** The backend returns at most this many observers (observer_matching.py MAX_MATCHES). */
+/** Process default when the backend doesn't send the cycle's limit (evaluation policy max_observers). */
 export const FULL_MATCH_COUNT = 5
+
+function fullCount(matches: ObserverMatches): number {
+  return matches.max_observers ?? FULL_MATCH_COUNT
+}
 
 /** True when fewer observers qualified than a full match list. */
 export function hasFewMatches(matches: ObserverMatches): boolean {
-  return matches.observers.length < FULL_MATCH_COUNT
+  return matches.observers.length < fullCount(matches)
 }
 
 function alertIfFewMatches(showAlert: Alerts['showAlert'], matches: ObserverMatches, who: string) {
@@ -23,7 +27,7 @@ function alertIfFewMatches(showAlert: Alerts['showAlert'], matches: ObserverMatc
     message:
       count === 0
         ? `No eligible observers found for ${who}.`
-        : `Only ${count} of ${FULL_MATCH_COUNT} potential observers found for ${who}.`,
+        : `Only ${count} of ${fullCount(matches)} potential observers found for ${who}.`,
   })
 }
 

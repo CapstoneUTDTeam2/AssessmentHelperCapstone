@@ -7,12 +7,12 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from app.api.cycle_deadlines import resolve_cycle
+from app.api.evaluation_policy import max_observers
 from app.db import engine
 
 router = APIRouter(prefix="/api", tags=["observer-matching"])
 
-# SRS / Q15: return at most 5 names; pick at random when more qualify.
-MAX_MATCHES = 5
+# SRS / Q15: return at most N names (evaluation policy, default 5); pick at random when more qualify.
 
 DAY_NAMES = {
     "MONDAY": "M",
@@ -461,10 +461,10 @@ def _adhoc_eligible(
     return eligible
 
 
-def _pick_observers(eligible):
-    if len(eligible) <= MAX_MATCHES:
+def _pick_observers(eligible, limit):
+    if len(eligible) <= limit:
         return eligible
-    return sorted(random.sample(eligible, MAX_MATCHES), key=lambda item: item["name"])
+    return sorted(random.sample(eligible, limit), key=lambda item: item["name"])
 
 
 def build_match_result(
@@ -502,6 +502,7 @@ def build_match_result(
             conn, faculty_id, observee["departmentid"], cycle, level,
             requested_days, window_start, window_end, point_only,
         )
+    limit = max_observers(conn, cycle["cycleid"])
     payload = {
         "faculty_id": observee["professorid"],
         "faculty_name": observee["professorname"],
@@ -517,7 +518,8 @@ def build_match_result(
         "end_time": _time_str(window_end),
         "eligible_count": len(eligible),
         "insufficient": len(eligible) == 0,
-        "observers": _pick_observers(eligible),
+        "max_observers": limit,
+        "observers": _pick_observers(eligible, limit),
     }
     if signup_id is not None:
         payload["signup_id"] = signup_id

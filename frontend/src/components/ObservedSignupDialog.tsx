@@ -82,8 +82,8 @@ function ObservedSignupDialog({
       title={readOnly ? 'Observation Sign-up' : 'Sign Up to Be Observed'}
       description={
         readOnly
-          ? `Your ${cycleLabel} signup. One course per cycle; signing up also puts you in the observer pool.`
-          : `Choose one of your ${cycleLabel} classes, then every day it meets that you’d be okay being observed. One course per cycle. Signing up also puts you in the observer pool.`
+          ? `Your ${cycleLabel} signup. Signing up also puts you in the observer pool.`
+          : `Choose one of your ${cycleLabel} classes, then every day it meets that you’d be okay being observed. Signing up also puts you in the observer pool.`
       }
       submitLabel={readOnly ? 'Close' : initial ? 'Save sign-up' : 'Sign up'}
       canSubmit={readOnly || (selected !== null && dates.size > 0)}

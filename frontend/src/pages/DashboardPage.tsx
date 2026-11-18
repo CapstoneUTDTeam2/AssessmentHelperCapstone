@@ -54,7 +54,7 @@ function summarizeSelection(result: ObserverSelectionResult): SelectionOutcome {
   const parts = [
     `${matched} matched`,
     unmatched > 0 && `${unmatched} with no observers`,
-    short > 0 && `${short} with fewer than 5 observers`,
+    short > 0 && `${short} with fewer observers than a full list`,
     kept > 0 && `${kept} kept their existing list`,
   ].filter(Boolean)
   return unmatched > 0 || short > 0
@@ -439,7 +439,7 @@ function SelectionPanel({
         <div>
           <h2 className="text-sm font-semibold text-neutral-900">Observer Selection</h2>
           <p className="mt-0.5 text-[10px] text-neutral-500">
-            After the signup deadline: each observee, up to 5 observers, and a notify button. Manual assignment is a
+            After the signup deadline: each observee, their observer list (size set in Evaluation Policy), and a notify button. Manual assignment is a
             stretch goal.
           </p>
         </div>

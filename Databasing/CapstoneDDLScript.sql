@@ -158,6 +158,64 @@ AS $$
 $$;
 
 
+-- Evaluation policy the committee can change. A row applies from its cycle onward,
+-- until a later cycle has its own row. A cycle with no row (and none before it)
+-- uses the process defaults in evaluation_policy() below.
+CREATE TABLE EvaluationPolicy (
+    CycleID INT PRIMARY KEY,
+    AssistantFrequencyYears INT NOT NULL,
+    SeniorFrequencyYears INT NOT NULL,     -- Associate and Full professors
+    SignupsPerCycle INT NOT NULL,
+    MaxObservers INT NOT NULL,
+    UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (CycleID) REFERENCES EvaluationCycle(CycleID),
+    CONSTRAINT valid_frequency_years CHECK (
+        AssistantFrequencyYears BETWEEN 1 AND 5 AND SeniorFrequencyYears BETWEEN 1 AND 5
+    ),
+    CONSTRAINT valid_signups_per_cycle CHECK (SignupsPerCycle BETWEEN 1 AND 5),
+    CONSTRAINT valid_max_observers CHECK (MaxObservers BETWEEN 1 AND 10)
+);
+
+-- The policy in effect for a cycle: its own row, else the closest earlier cycle's row,
+-- else the process defaults (1 year, 2 years, 1 signup, 5 observers).
+CREATE OR REPLACE FUNCTION evaluation_policy(p_cycle_id INT)
+RETURNS TABLE (
+    SourceCycleID INT,
+    AssistantFrequencyYears INT,
+    SeniorFrequencyYears INT,
+    SignupsPerCycle INT,
+    MaxObservers INT
+)
+LANGUAGE sql
+STABLE
+AS $$
+    WITH target AS (
+        SELECT at.YearNum * 10 + CASE at.Semester WHEN 'Spring' THEN 1 WHEN 'Summer' THEN 2 ELSE 3 END AS term_key
+        FROM EvaluationCycle ec
+        JOIN AcademicTerm at ON at.TermID = ec.TermID
+        WHERE ec.CycleID = p_cycle_id
+    ),
+    chosen AS (
+        SELECT ep.*
+        FROM EvaluationPolicy ep
+        JOIN EvaluationCycle ec ON ec.CycleID = ep.CycleID
+        JOIN AcademicTerm at ON at.TermID = ec.TermID
+        CROSS JOIN target
+        WHERE at.YearNum * 10 + CASE at.Semester WHEN 'Spring' THEN 1 WHEN 'Summer' THEN 2 ELSE 3 END
+              <= target.term_key
+        ORDER BY at.YearNum DESC,
+                 CASE at.Semester WHEN 'Spring' THEN 1 WHEN 'Summer' THEN 2 ELSE 3 END DESC
+        LIMIT 1
+    )
+    SELECT
+        (SELECT CycleID FROM chosen),
+        COALESCE((SELECT AssistantFrequencyYears FROM chosen), 1),
+        COALESCE((SELECT SeniorFrequencyYears FROM chosen), 2),
+        COALESCE((SELECT SignupsPerCycle FROM chosen), 1),
+        COALESCE((SELECT MaxObservers FROM chosen), 5);
+$$;
+
+
 -- EvaluationCriterionSectioner
 CREATE TABLE EvaluationCriterionSection (
     SectionID INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

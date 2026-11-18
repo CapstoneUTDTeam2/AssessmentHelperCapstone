@@ -149,3 +149,28 @@ def test_demo_pair_are_due_unsigned_and_distinct(client):
     }
     assert left["professor_id"] in due
     assert right["professor_id"] in due
+
+
+def test_randomize_past_reports_are_filled_out(client):
+    import psycopg
+
+    from tests.conftest import TEST_DATABASE_URL, _raw_conninfo
+
+    assert client.post("/api/test/randomize-unknowns").status_code == 200
+    with psycopg.connect(_raw_conninfo(TEST_DATABASE_URL)) as conn:
+        rows = conn.execute(
+            """
+            SELECT o.ObservationID, o.Notes,
+                   (SELECT COUNT(*) FROM EvaluationCriterion c WHERE c.TemplateID = o.TemplateID),
+                   COUNT(r.CriterionID),
+                   COUNT(r.Comments)
+            FROM Observation o
+            LEFT JOIN ObservationCriterionRating r ON r.ObservationID = o.ObservationID
+            WHERE o.Status = 'Completed'
+            GROUP BY o.ObservationID
+            """
+        ).fetchall()
+    assert rows, "randomize should leave past completed reports"
+    for _id, notes, criteria, ratings, comments in rows:
+        assert notes
+        assert ratings == criteria == comments
